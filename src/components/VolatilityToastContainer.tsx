@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   TrendingUp,
   TrendingDown,
@@ -67,26 +67,26 @@ const VolatilityToastItem: React.FC<VolatilityToastItemProps> = ({
 }) => {
   const [progress, setProgress] = useState(100);
   const [isPaused, setIsPaused] = useState(false);
+  const remainingTimeRef = useRef(12000);
   const isSpikeRed = alert.direction === 'SPIKE_UP';
   const isAfterHours = alert.session === 'AFTER_HOURS';
 
-  // Auto-dismiss countdown after 12 seconds
+  // Auto-dismiss countdown after 12 seconds with pause support
   useEffect(() => {
     if (isPaused) return;
 
     const interval = 100;
     const totalDuration = 12000;
-    const decrement = (interval / totalDuration) * 100;
 
     const timer = setInterval(() => {
-      setProgress((prev) => {
-        if (prev <= 0) {
-          clearInterval(timer);
-          onDismiss();
-          return 0;
-        }
-        return prev - decrement;
-      });
+      remainingTimeRef.current -= interval;
+      if (remainingTimeRef.current <= 0) {
+        clearInterval(timer);
+        onDismiss();
+      } else {
+        const pct = Math.max(0, Math.min(100, (remainingTimeRef.current / totalDuration) * 100));
+        setProgress(pct);
+      }
     }, interval);
 
     return () => clearInterval(timer);
