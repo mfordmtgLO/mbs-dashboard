@@ -4,6 +4,7 @@ export interface HousingBriefArticle {
   title: string;
   category: 'MBS Morning' | 'MBS Recap' | 'MBS Alert';
   publishedTime: string;
+  publishedTimestamp: number; // Unix timestamp in milliseconds for guaranteed newest-to-oldest sorting
   author: string;
   authorTitle: string;
   sourceDomain: string;
@@ -20,13 +21,14 @@ export interface HousingBriefArticle {
   }[];
 }
 
-export const HOUSING_BRIEF_ARTICLES: HousingBriefArticle[] = [
+const RAW_HOUSING_BRIEF_ARTICLES: HousingBriefArticle[] = [
   {
     id: '6a8c5f9c081f33c95c40440a',
     url: 'https://housingbrief.com/Article/6a8c5f9c081f33c95c40440a/5422cc85becf1e23a41598ec?fcb=False&sr=False',
     title: 'MBS Morning: Slightly Stronger Start Mostly Due to Oil. Treasury News Fails to Inspire (Again)',
     category: 'MBS Morning',
-    publishedTime: 'Tuesday Morning (Latest)',
+    publishedTime: 'Tuesday, Aug 25 - Morning (Most Recent)',
+    publishedTimestamp: 1787659200000, // 2026-08-25T09:00:00Z (Newest)
     author: 'Matthew Graham',
     authorTitle: 'Chief Secondary Market Strategist, MBS Live / HousingBrief',
     sourceDomain: 'housingbrief.com',
@@ -53,6 +55,7 @@ export const HOUSING_BRIEF_ARTICLES: HousingBriefArticle[] = [
     title: 'MBS Recap: Tune Out The Noise (Part 2)',
     category: 'MBS Recap',
     publishedTime: 'Mon, Aug 24 - 8:56 PM',
+    publishedTimestamp: 1787604960000, // 2026-08-24T20:56:00Z
     author: 'Matthew Graham',
     authorTitle: 'Chief Secondary Market Strategist, MBS Live / HousingBrief',
     sourceDomain: 'housingbrief.com',
@@ -79,6 +82,7 @@ export const HOUSING_BRIEF_ARTICLES: HousingBriefArticle[] = [
     title: 'MBS Recap: Incidental Weakness. Bigger Considerations on The Horizon',
     category: 'MBS Recap',
     publishedTime: 'Fri, Aug 21 - 7:36 PM',
+    publishedTimestamp: 1787340960000, // 2026-08-21T19:36:00Z
     author: 'Matthew Graham',
     authorTitle: 'Chief Secondary Market Strategist, MBS Live / HousingBrief',
     sourceDomain: 'housingbrief.com',
@@ -105,6 +109,7 @@ export const HOUSING_BRIEF_ARTICLES: HousingBriefArticle[] = [
     title: 'MBS Alert: Slightly More Reprice Risk',
     category: 'MBS Alert',
     publishedTime: 'Fri, Aug 21 - 5:52 PM',
+    publishedTimestamp: 1787334720000, // 2026-08-21T17:52:00Z
     author: 'Matthew Graham',
     authorTitle: 'Chief Secondary Market Strategist, MBS Live / HousingBrief',
     sourceDomain: 'housingbrief.com',
@@ -129,6 +134,7 @@ export const HOUSING_BRIEF_ARTICLES: HousingBriefArticle[] = [
     title: 'MBS Alert: MBS Down an Eighth',
     category: 'MBS Alert',
     publishedTime: 'Fri, Aug 21 - 2:34 PM',
+    publishedTimestamp: 1787322840000, // 2026-08-21T14:34:00Z
     author: 'Matthew Graham',
     authorTitle: 'Chief Secondary Market Strategist, MBS Live / HousingBrief',
     sourceDomain: 'housingbrief.com',
@@ -149,3 +155,13 @@ export const HOUSING_BRIEF_ARTICLES: HousingBriefArticle[] = [
     targetMbsBenchmark: '30Y UMBS 5.5% Benchmark',
   }
 ];
+
+// Always mathematically sorted: newest published article at index 0 (Featured) to oldest at index 4
+export const HOUSING_BRIEF_ARTICLES: HousingBriefArticle[] = [...RAW_HOUSING_BRIEF_ARTICLES].sort(
+  (a, b) => b.publishedTimestamp - a.publishedTimestamp
+);
+
+// Explicitly retrieve the guaranteed most recently published article
+export const getLatestHousingBriefArticle = (): HousingBriefArticle => {
+  return HOUSING_BRIEF_ARTICLES[0];
+};

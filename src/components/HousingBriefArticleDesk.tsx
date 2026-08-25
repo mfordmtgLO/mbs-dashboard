@@ -3,40 +3,41 @@ import {
   Newspaper,
   ExternalLink,
   Calendar,
-  User,
   ShieldCheck,
-  TrendingUp,
-  TrendingDown,
-  AlertTriangle,
   Sparkles,
   ChevronRight,
-  Bookmark,
-  CheckCircle2,
   Clock,
   Flame,
-  Layers,
   ArrowUpRight,
   ArrowDownRight,
+  AlertTriangle,
   BookOpen,
+  RotateCcw,
+  Radio,
 } from 'lucide-react';
-import { HOUSING_BRIEF_ARTICLES, HousingBriefArticle } from '../data/housingBriefArticles';
+import {
+  HOUSING_BRIEF_ARTICLES,
+  HousingBriefArticle,
+  getLatestHousingBriefArticle,
+} from '../data/housingBriefArticles';
 
 interface HousingBriefArticleDeskProps {
   onOpenArticleUrl?: (url: string) => void;
 }
 
-export const HousingBriefArticleDesk: React.FC<HousingBriefArticleDeskProps> = ({
-  onOpenArticleUrl,
-}) => {
+export const HousingBriefArticleDesk: React.FC<HousingBriefArticleDeskProps> = () => {
+  // Always guarantee the first article is the most recently published article
+  const latestPublishedArticle = getLatestHousingBriefArticle();
+
   const [selectedArticleId, setSelectedArticleId] = useState<string>(
-    HOUSING_BRIEF_ARTICLES[0].id // Defaults to the most recent article
+    latestPublishedArticle.id
   );
 
   const selectedArticle =
     HOUSING_BRIEF_ARTICLES.find((a) => a.id === selectedArticleId) ||
-    HOUSING_BRIEF_ARTICLES[0];
+    latestPublishedArticle;
 
-  const isLatest = selectedArticle.id === HOUSING_BRIEF_ARTICLES[0].id;
+  const isReadingLatest = selectedArticle.id === latestPublishedArticle.id;
 
   const getImpactBadge = (impact: HousingBriefArticle['marketImpact']) => {
     switch (impact) {
@@ -94,57 +95,71 @@ export const HousingBriefArticleDesk: React.FC<HousingBriefArticleDeskProps> = (
           </div>
           <div>
             <div className="flex flex-wrap items-center gap-2">
-              <span className="px-2 py-0.5 rounded bg-[#FFD700] text-black font-mono font-extrabold text-[10px] uppercase tracking-wider">
-                FEATURED HOUSINGBRIEF & MBS LIVE FEED
+              <span className="px-2 py-0.5 rounded bg-[#FFD700] text-black font-mono font-extrabold text-[10px] uppercase tracking-wider flex items-center gap-1">
+                <Flame className="w-3 h-3 text-black fill-black" />
+                FEATURED: MOST RECENTLY PUBLISHED ARTICLE
               </span>
               <span className="px-2 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-800 text-[10px] font-mono font-bold">
-                5 MOST RECENT WIRE REPORTS
+                HOUSINGBRIEF & MBS LIVE WIRE
               </span>
-              <span className="px-2 py-0.5 rounded bg-green-950 text-green-400 border border-green-800 text-[10px] font-mono font-bold">
-                NEWEST → OLDEST
+              <span className="px-2 py-0.5 rounded bg-[#1c1c1c] text-gray-300 border border-[#333333] text-[10px] font-mono font-bold">
+                5 MOST RECENT (NEWEST → OLDEST)
               </span>
             </div>
             <h2 className="text-lg sm:text-xl font-extrabold text-white mt-1 tracking-tight flex items-center gap-2">
               <span>Secondary Market Commentary & Wire</span>
             </h2>
             <p className="text-xs text-gray-400 mt-0.5 max-w-2xl">
-              Curated market intelligence, Treasury buyback analysis, and rate sheet reprice alerts directly sourced from HousingBrief.com and MBS Live.
+              Always featuring the latest published market wire from HousingBrief.com / MBS Live, with one-click access to the 5 newest reports.
             </p>
           </div>
         </div>
 
-        {/* Direct Original Link */}
-        <a
-          id="btn-open-housingbrief-direct"
-          href={selectedArticle.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-xl bg-[#1c1c1c] hover:bg-[#282828] border border-[#383838] hover:border-[#FFD700]/60 text-gray-200 hover:text-[#FFD700] text-xs font-mono font-bold transition-all shadow-md group cursor-pointer"
-        >
-          <span>Open on HousingBrief.com</span>
-          <ExternalLink className="w-3.5 h-3.5 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
-        </a>
+        {/* Action Controls & External Link */}
+        <div className="flex items-center space-x-2">
+          {!isReadingLatest && (
+            <button
+              id="btn-return-featured-latest"
+              onClick={() => setSelectedArticleId(latestPublishedArticle.id)}
+              className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-[#FFD700] hover:bg-[#ffe135] text-black text-xs font-mono font-extrabold transition-all shadow-lg cursor-pointer"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Back to Featured Latest</span>
+            </button>
+          )}
+
+          <a
+            id="btn-open-housingbrief-direct"
+            href={selectedArticle.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-xl bg-[#1c1c1c] hover:bg-[#282828] border border-[#383838] hover:border-[#FFD700]/60 text-gray-200 hover:text-[#FFD700] text-xs font-mono font-bold transition-all shadow-md group cursor-pointer"
+          >
+            <span>Open on HousingBrief.com</span>
+            <ExternalLink className="w-3.5 h-3.5 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+          </a>
+        </div>
       </div>
 
-      {/* Main 2-Column Content Layout: 5 Articles Selector (Left/Top) + Featured Active Article (Right) */}
+      {/* Main 2-Column Content Layout: 5 Articles Selector (Left) + Featured/Selected Article Reader (Right) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-0 divide-y lg:divide-y-0 lg:divide-x divide-[#222222]">
         
-        {/* Left Column: 5 Most Recent Articles List (Newest to Oldest) - 4 cols on lg */}
+        {/* Left Column: 5 Most Recent Articles List (Strictly Newest to Oldest) */}
         <div className="lg:col-span-5 bg-[#0a0a0a] p-3 sm:p-4 flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between pb-2 mb-3 border-b border-[#202020]">
               <span className="font-mono text-xs font-bold text-gray-300 uppercase tracking-wider flex items-center gap-1.5">
                 <Clock className="w-3.5 h-3.5 text-[#FFD700]" />
-                Recent 5 Articles (Click to View)
+                5 Most Recent Wire Articles
               </span>
-              <span className="text-[10px] font-mono text-gray-500">1 (Newest) - 5 (Oldest)</span>
+              <span className="text-[10px] font-mono text-[#FFD700] font-bold">Newest → Oldest</span>
             </div>
 
             {/* 5 Article Cards */}
             <div className="space-y-2.5">
               {HOUSING_BRIEF_ARTICLES.map((article, index) => {
                 const isSelected = article.id === selectedArticleId;
-                const isFirst = index === 0;
+                const isTheMostRecent = index === 0; // Index 0 is always the newest published article
 
                 return (
                   <div
@@ -154,16 +169,18 @@ export const HousingBriefArticleDesk: React.FC<HousingBriefArticleDeskProps> = (
                     className={`p-3 rounded-xl border transition-all cursor-pointer relative group ${
                       isSelected
                         ? 'bg-[#1a1708] border-[#FFD700] shadow-md ring-1 ring-[#FFD700]'
+                        : isTheMostRecent
+                        ? 'bg-[#141209] border-[#443812] hover:border-[#FFD700]/70'
                         : 'bg-[#111111] hover:bg-[#161616] border-[#222222] hover:border-[#383838]'
                     }`}
                   >
                     {/* Header Row */}
                     <div className="flex items-center justify-between gap-2 mb-1.5">
-                      <div className="flex items-center space-x-1.5">
+                      <div className="flex items-center space-x-1.5 flex-wrap">
                         <span
                           className={`w-5 h-5 rounded-full flex items-center justify-center font-mono text-[10px] font-extrabold ${
-                            isFirst
-                              ? 'bg-[#FFD700] text-black'
+                            isTheMostRecent
+                              ? 'bg-[#FFD700] text-black ring-2 ring-[#FFD700]/40'
                               : isSelected
                               ? 'bg-[#FFD700]/30 text-[#FFD700]'
                               : 'bg-[#222222] text-gray-400'
@@ -172,6 +189,13 @@ export const HousingBriefArticleDesk: React.FC<HousingBriefArticleDeskProps> = (
                           {index + 1}
                         </span>
 
+                        {isTheMostRecent && (
+                          <span className="px-1.5 py-0.2 rounded bg-[#FFD700] text-black text-[9px] font-mono font-black uppercase tracking-wider flex items-center gap-1 shadow-sm">
+                            <Flame className="w-2.5 h-2.5 fill-black" />
+                            FEATURED (LATEST)
+                          </span>
+                        )}
+
                         <span
                           className={`px-1.5 py-0.2 rounded text-[9px] font-mono font-bold border ${getCategoryBadge(
                             article.category
@@ -179,17 +203,10 @@ export const HousingBriefArticleDesk: React.FC<HousingBriefArticleDeskProps> = (
                         >
                           {article.category}
                         </span>
-
-                        {isFirst && (
-                          <span className="px-1.5 py-0.2 rounded bg-red-950/80 text-red-300 border border-red-700/60 text-[9px] font-mono font-extrabold tracking-wider flex items-center gap-1">
-                            <Flame className="w-2.5 h-2.5 text-red-400" />
-                            FEATURED
-                          </span>
-                        )}
                       </div>
 
-                      <span className="text-[10px] font-mono text-gray-500 whitespace-nowrap">
-                        {article.publishedTime}
+                      <span className="text-[10px] font-mono text-gray-400 whitespace-nowrap font-bold">
+                        {article.publishedTime.split('(')[0].trim()}
                       </span>
                     </div>
 
@@ -198,6 +215,8 @@ export const HousingBriefArticleDesk: React.FC<HousingBriefArticleDeskProps> = (
                       className={`text-xs font-bold leading-snug line-clamp-2 transition-colors ${
                         isSelected
                           ? 'text-[#FFD700]'
+                          : isTheMostRecent
+                          ? 'text-white group-hover:text-[#FFD700]'
                           : 'text-gray-200 group-hover:text-white'
                       }`}
                     >
@@ -219,7 +238,7 @@ export const HousingBriefArticleDesk: React.FC<HousingBriefArticleDeskProps> = (
                           isSelected ? 'text-[#FFD700]' : 'text-gray-400 group-hover:text-gray-200'
                         }`}
                       >
-                        <span>{isSelected ? 'Reading Now' : 'Read Article'}</span>
+                        <span>{isSelected ? 'Reading Now' : 'Read Report'}</span>
                         <ChevronRight className="w-3 h-3" />
                       </span>
                     </div>
@@ -230,25 +249,55 @@ export const HousingBriefArticleDesk: React.FC<HousingBriefArticleDeskProps> = (
           </div>
 
           <div className="mt-4 p-2.5 rounded-lg bg-[#141414] border border-[#222222] text-[11px] text-gray-400 font-mono flex items-center justify-between">
-            <span>Archive Source:</span>
+            <span className="flex items-center gap-1.5 text-gray-300">
+              <Radio className="w-3 h-3 text-green-400 animate-pulse" />
+              Live Wire Sync:
+            </span>
             <a
               href="https://housingbrief.com/Article/archive/mbs/5422cc85becf1e23a41598ec?fcb=False"
               target="_blank"
               rel="noopener noreferrer"
               className="text-[#FFD700] hover:underline flex items-center gap-1 font-bold"
             >
-              <span>View Full MBS Archive</span>
+              <span>View Full Archive</span>
               <ExternalLink className="w-3 h-3" />
             </a>
           </div>
         </div>
 
-        {/* Right Column: Full Featured Article Reading View (7 cols on lg) */}
+        {/* Right Column: Full Featured / Selected Article Reading View */}
         <div className="lg:col-span-7 bg-[#121212] p-4 sm:p-6 flex flex-col justify-between">
           <div>
+            {/* Context Notice when reading an older article */}
+            {!isReadingLatest && (
+              <div className="mb-4 p-2.5 rounded-xl bg-[#1c1809] border border-[#FFD700]/40 flex items-center justify-between gap-2">
+                <div className="flex items-center space-x-2 text-xs font-mono text-gray-300">
+                  <Clock className="w-3.5 h-3.5 text-[#FFD700]" />
+                  <span>Viewing Archive Wire Report ({selectedArticle.publishedTime})</span>
+                </div>
+                <button
+                  onClick={() => setSelectedArticleId(latestPublishedArticle.id)}
+                  className="px-2.5 py-1 rounded-lg bg-[#FFD700] hover:bg-[#ffe135] text-black font-mono font-extrabold text-[10px] transition-all cursor-pointer flex items-center space-x-1 shadow"
+                >
+                  <span>★ View Featured Latest Article</span>
+                </button>
+              </div>
+            )}
+
             {/* Article Top Meta Bar */}
             <div className="flex flex-wrap items-center justify-between gap-2 pb-3 mb-4 border-b border-[#222222]">
-              <div className="flex items-center space-x-2">
+              <div className="flex items-center space-x-2 flex-wrap gap-y-1">
+                {isReadingLatest ? (
+                  <span className="px-2 py-0.5 rounded bg-[#FFD700] text-black text-[10px] font-mono font-black uppercase tracking-wider flex items-center gap-1 shadow-sm">
+                    <Flame className="w-3 h-3 fill-black" />
+                    FEATURED (MOST RECENT ARTICLE)
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 rounded bg-[#1f1f1f] text-gray-300 border border-[#333333] text-[10px] font-mono font-bold">
+                    ARCHIVE WIRE REPORT
+                  </span>
+                )}
+
                 <span
                   className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold border ${getCategoryBadge(
                     selectedArticle.category
@@ -257,11 +306,6 @@ export const HousingBriefArticleDesk: React.FC<HousingBriefArticleDeskProps> = (
                   {selectedArticle.category}
                 </span>
                 {getImpactBadge(selectedArticle.marketImpact)}
-                {isLatest && (
-                  <span className="px-2 py-0.5 rounded bg-[#FFD700]/20 text-[#FFD700] border border-[#FFD700]/50 text-[10px] font-mono font-bold">
-                    ★ MOST RECENT
-                  </span>
-                )}
               </div>
 
               <div className="flex items-center space-x-2 text-xs text-gray-400 font-mono">

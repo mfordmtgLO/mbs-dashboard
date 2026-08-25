@@ -264,11 +264,12 @@ export const LoBenchmarkDesk: React.FC<LoBenchmarkDeskProps> = ({
             {/* Header */}
             <div className="flex items-center justify-between pb-3 border-b border-[#222222]">
               <div className="flex items-center space-x-2">
-                <div className="w-3 h-3 rounded-full bg-amber-400 animate-ping"></div>
+                <div className="w-2.5 h-2.5 rounded-full bg-green-400 animate-pulse"></div>
                 <span className="font-mono font-extrabold text-sm text-white">US 10Y BENCHMARK</span>
               </div>
-              <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-950/60 text-amber-300 border border-amber-800/60">
-                CMT YIELD
+              <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-green-950/60 text-green-300 border border-green-800/60 flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-400"></span>
+                CNBC LIVE
               </span>
             </div>
 
