@@ -294,7 +294,7 @@ export const MbsTickerBoard: React.FC<MbsTickerBoardProps> = ({
                     </td>
 
                     {/* Day Change */}
-                    <td className="px-4 py-2.5 text-right whitespace-nowrap">
+                    <td className="px-4 py-2.5 text-right whitespace-nowrap font-mono">
                       <span
                         className={`inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-bold ${
                           isUp
@@ -304,7 +304,9 @@ export const MbsTickerBoard: React.FC<MbsTickerBoardProps> = ({
                       >
                         {isUp ? '+' : ''}
                         {!isTreasury && !isSpread
-                          ? `${q.change32nds}/32`
+                          ? displayFormat === '32nds'
+                            ? `${q.change32nds}/32`
+                            : `${(q.changeBps / 100).toFixed(3)} pts`
                           : `${q.changeBps.toFixed(1)} bps`}
                       </span>
                     </td>
@@ -440,7 +442,9 @@ export const MbsTickerBoard: React.FC<MbsTickerBoardProps> = ({
                     {isUp ? <ArrowUpRight className="w-3.5 h-3.5" /> : <ArrowDownRight className="w-3.5 h-3.5" />}
                     <span>
                       {!isTreasury && !isSpread
-                        ? `${isUp ? '+' : ''}${q.change32nds}/32`
+                        ? displayFormat === '32nds'
+                          ? `${isUp ? '+' : ''}${q.change32nds}/32`
+                          : `${isUp ? '+' : ''}${(q.changeBps / 100).toFixed(3)} pts`
                         : `${isUp ? '+' : ''}${q.changeBps.toFixed(1)} bps`}
                     </span>
                   </div>

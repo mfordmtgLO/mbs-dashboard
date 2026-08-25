@@ -41,6 +41,8 @@ export const LoBenchmarkDesk: React.FC<LoBenchmarkDeskProps> = ({
   onNavigateToTab,
 }) => {
   const [loanAmount, setLoanAmount] = useState<number>(500000);
+  const [customLoanInput, setCustomLoanInput] = useState<string>('500,000');
+  const [pipelineCount, setPipelineCount] = useState<number>(1);
   const [displayMode, setDisplayMode] = useState<'32nds' | 'decimal'>('32nds');
 
   // Key Trading Instruments
@@ -85,12 +87,49 @@ export const LoBenchmarkDesk: React.FC<LoBenchmarkDeskProps> = ({
     coreMbsChangeBps
   );
 
-  const presetAmounts = [300000, 450000, 500000, 650000, 800000, 1000000];
+  const presetAmounts = [300000, 400000, 500000, 650000, 750000, 1000000];
+
+  const handleSelectLoanAmount = (amt: number) => {
+    setLoanAmount(amt);
+    setCustomLoanInput(amt.toLocaleString());
+  };
+
+  const handleCustomLoanChange = (valStr: string) => {
+    setCustomLoanInput(valStr);
+    const cleaned = Number(valStr.replace(/[^0-9]/g, ''));
+    if (!isNaN(cleaned) && cleaned > 0) {
+      setLoanAmount(cleaned);
+    }
+  };
 
   const formatPrice = (q?: MBSQuote) => {
     if (!q) return '—';
-    if (displayMode === '32nds') return q.priceFormatted || decimalTo32nds(q.price);
+    if (displayMode === '32nds') {
+      return q.priceFormatted || decimalTo32nds(q.price);
+    }
     return q.price.toFixed(3);
+  };
+
+  const formatDayShift = (q?: MBSQuote) => {
+    if (!q) return { primary: '+0/32', secondary: '+0.0 bp', isUp: true };
+    const isUp = (q.change32nds ?? 0) >= 0 || (q.changeBps ?? 0) >= 0;
+    const prefix = isUp ? '+' : '';
+    
+    if (displayMode === '32nds') {
+      return {
+        primary: `${prefix}${q.change32nds ?? 0}/32`,
+        secondary: `(${prefix}${(q.changeBps ?? 0).toFixed(1)} bp)`,
+        isUp,
+      };
+    } else {
+      // In decimal mode, show price change in decimal points (e.g. +0.344 pts)
+      const decimalChange = (q.changeBps ?? 0) / 100;
+      return {
+        primary: `${prefix}${decimalChange.toFixed(3)} pts`,
+        secondary: `(${prefix}${(q.changeBps ?? 0).toFixed(1)} bps)`,
+        isUp,
+      };
+    }
   };
 
   const renderCouponCard = (
@@ -102,8 +141,10 @@ export const LoBenchmarkDesk: React.FC<LoBenchmarkDeskProps> = ({
   ) => {
     if (!quote) return null;
     const isSelected = quote.id === selectedQuoteId;
-    const isUp = quote.change32nds >= 0;
+    const shift = formatDayShift(quote);
+    const isUp = shift.isUp;
     const impact = computeLoanDollarImpact(loanAmount, quote.changeBps);
+    const pipelineTotalImpact = impact.dollarValue * pipelineCount;
 
     const isGov = agencyLabel === 'GOVERNMENT';
     const accentColor = isGov ? 'text-teal-400' : 'text-blue-400';
@@ -139,7 +180,10 @@ export const LoBenchmarkDesk: React.FC<LoBenchmarkDeskProps> = ({
         {/* Live Price & Day Movement */}
         <div className="flex items-baseline justify-between gap-2 my-1.5">
           <div>
-            <div className="text-[10px] uppercase font-mono text-gray-400">TBA Price</div>
+            <div className="text-[10px] uppercase font-mono text-gray-400 flex items-center gap-1">
+              <span>TBA Price</span>
+              <span className="text-[9px] text-gray-500 font-mono">({displayMode.toUpperCase()})</span>
+            </div>
             <div className="text-xl font-extrabold font-mono text-white tracking-tight flex items-baseline gap-1.5">
               <span>{formatPrice(quote)}</span>
               <span className="text-[11px] font-normal text-gray-400">({quote.yieldRate.toFixed(3)}% yld)</span>
@@ -160,27 +204,39 @@ export const LoBenchmarkDesk: React.FC<LoBenchmarkDeskProps> = ({
               ) : (
                 <ArrowDownRight className="w-3.5 h-3.5 mr-0.5" />
               )}
-              <span>{isUp ? '+' : ''}{quote.change32nds}/32</span>
-              <span className="ml-1 opacity-80 text-[10px]">({isUp ? '+' : ''}{quote.changeBps.toFixed(1)} bp)</span>
+              <span>{shift.primary}</span>
+              <span className="ml-1 opacity-80 text-[10px]">{shift.secondary}</span>
             </div>
           </div>
         </div>
 
         {/* Loan Officer Dollar Impact Pill */}
-        <div className="mt-2.5 pt-2 border-t border-[#222222] flex items-center justify-between text-xs">
-          <span className="text-gray-400 text-[11px]">
-            Impact on ${(loanAmount / 1000).toFixed(0)}k file:
-          </span>
-          <span
-            className={`font-mono font-bold text-xs ${
-              isUp ? 'text-green-400' : 'text-rose-400'
-            }`}
-          >
-            {isUp ? '+' : '-'}${Math.abs(Math.round(impact.dollarValue)).toLocaleString()}
-            <span className="text-[10px] text-gray-400 font-normal ml-1">
-              ({isUp ? 'pricing gain' : 'cost increase'})
+        <div className="mt-2.5 pt-2 border-t border-[#222222] space-y-1">
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-gray-400 text-[11px] flex items-center gap-1 font-mono">
+              <DollarSign className="w-3 h-3 text-[#FFD700]" />
+              <span>${(loanAmount / 1000).toFixed(0)}k file impact:</span>
             </span>
-          </span>
+            <span
+              className={`font-mono font-bold text-xs ${
+                isUp ? 'text-green-400' : 'text-rose-400'
+              }`}
+            >
+              {isUp ? '+' : '-'}${Math.abs(Math.round(impact.dollarValue)).toLocaleString()}
+              <span className="text-[10px] text-gray-400 font-normal ml-1">
+                ({isUp ? 'gain' : 'cost'})
+              </span>
+            </span>
+          </div>
+
+          {pipelineCount > 1 && (
+            <div className="flex items-center justify-between text-[11px] font-mono text-gray-400 bg-[#0a0a0a] px-2 py-0.5 rounded border border-[#202020]">
+              <span>{pipelineCount} Files (${((loanAmount * pipelineCount) / 1000000).toFixed(2)}M):</span>
+              <span className={`font-bold ${isUp ? 'text-green-400' : 'text-rose-400'}`}>
+                {isUp ? '+' : '-'}${Math.abs(Math.round(pipelineTotalImpact)).toLocaleString()}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Selected Indicator */}
@@ -225,14 +281,14 @@ export const LoBenchmarkDesk: React.FC<LoBenchmarkDeskProps> = ({
 
         {/* Global LO Configs: Pipeline Loan Amount & Display Format */}
         <div className="flex flex-wrap items-center gap-3">
-          {/* Quick Loan Sizer */}
+          {/* Quick Loan Sizer Dropdown */}
           <div className="flex items-center space-x-1.5 bg-[#141414] p-1.5 rounded-xl border border-[#292929]">
             <DollarSign className="w-4 h-4 text-[#FFD700]" />
             <span className="text-[11px] font-mono text-gray-400 mr-1 hidden sm:inline">File Sizer:</span>
             <select
               id="lo-loan-amount-select"
               value={loanAmount}
-              onChange={(e) => setLoanAmount(Number(e.target.value))}
+              onChange={(e) => handleSelectLoanAmount(Number(e.target.value))}
               className="bg-[#0a0a0a] text-white text-xs font-mono font-bold px-2 py-1 rounded-lg border border-[#333333] focus:outline-none focus:border-[#FFD700] cursor-pointer"
             >
               {presetAmounts.map((amt) => (
@@ -243,30 +299,110 @@ export const LoBenchmarkDesk: React.FC<LoBenchmarkDeskProps> = ({
             </select>
           </div>
 
-          {/* 32nds vs Decimal */}
+          {/* 32nds vs Decimal Toggle */}
           <div className="flex items-center bg-[#141414] p-1 rounded-xl border border-[#292929] text-xs">
             <button
               id="lo-toggle-32nds"
               onClick={() => setDisplayMode('32nds')}
-              className={`px-2.5 py-1 rounded-lg font-mono text-xs font-bold transition-all cursor-pointer ${
+              className={`px-3 py-1 rounded-lg font-mono text-xs font-bold transition-all cursor-pointer flex items-center space-x-1 ${
                 displayMode === '32nds'
-                  ? 'bg-[#FFD700] text-black shadow-sm'
+                  ? 'bg-[#FFD700] text-black shadow-md font-extrabold ring-1 ring-[#FFD700]'
                   : 'text-gray-400 hover:text-white'
               }`}
             >
-              32nds
+              <span>32nds</span>
+              {displayMode === '32nds' && <span className="text-[9px] opacity-80">(Fractional)</span>}
             </button>
             <button
               id="lo-toggle-decimal"
               onClick={() => setDisplayMode('decimal')}
-              className={`px-2.5 py-1 rounded-lg font-mono text-xs font-bold transition-all cursor-pointer ${
+              className={`px-3 py-1 rounded-lg font-mono text-xs font-bold transition-all cursor-pointer flex items-center space-x-1 ${
                 displayMode === 'decimal'
-                  ? 'bg-[#FFD700] text-black shadow-sm'
+                  ? 'bg-[#FFD700] text-black shadow-md font-extrabold ring-1 ring-[#FFD700]'
                   : 'text-gray-400 hover:text-white'
               }`}
             >
-              Decimal
+              <span>Decimal</span>
+              {displayMode === 'decimal' && <span className="text-[9px] opacity-80">(Exact)</span>}
             </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Interactive Loan Officer File Sizer & Pricing Impact Bar */}
+      <div className="p-3.5 sm:p-4 bg-[#0a0a0a] border-b border-[#222222] flex flex-wrap items-center justify-between gap-3 text-xs">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[11px] font-mono text-[#FFD700] font-bold flex items-center gap-1 uppercase">
+            <DollarSign className="w-3.5 h-3.5 text-[#FFD700]" />
+            Active Loan Size:
+          </span>
+
+          {/* Quick Preset Buttons */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            {presetAmounts.map((amt) => {
+              const isSelectedAmt = loanAmount === amt;
+              return (
+                <button
+                  key={amt}
+                  onClick={() => handleSelectLoanAmount(amt)}
+                  className={`px-2.5 py-1 rounded-lg font-mono text-xs font-bold transition-all cursor-pointer ${
+                    isSelectedAmt
+                      ? 'bg-[#FFD700] text-black shadow-sm'
+                      : 'bg-[#161616] text-gray-400 hover:text-white hover:bg-[#202020] border border-[#2a2a2a]'
+                  }`}
+                >
+                  ${(amt / 1000).toFixed(0)}k
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Quick Increment / Decrement & Custom Input */}
+          <div className="flex items-center space-x-1 bg-[#141414] px-2 py-0.5 rounded-lg border border-[#282828]">
+            <button
+              onClick={() => handleSelectLoanAmount(Math.max(50000, loanAmount - 50000))}
+              className="text-gray-400 hover:text-white px-1.5 py-0.5 rounded font-mono text-xs hover:bg-[#222222] cursor-pointer"
+              title="Decrease $50k"
+            >
+              -$50k
+            </button>
+            <div className="flex items-center text-white font-mono text-xs font-bold px-1">
+              <span className="text-gray-500 mr-0.5">$</span>
+              <input
+                type="text"
+                value={customLoanInput}
+                onChange={(e) => handleCustomLoanChange(e.target.value)}
+                className="w-20 bg-transparent text-white font-mono font-bold focus:outline-none text-center"
+                placeholder="500,000"
+              />
+            </div>
+            <button
+              onClick={() => handleSelectLoanAmount(loanAmount + 50000)}
+              className="text-gray-400 hover:text-white px-1.5 py-0.5 rounded font-mono text-xs hover:bg-[#222222] cursor-pointer"
+              title="Increase $50k"
+            >
+              +$50k
+            </button>
+          </div>
+        </div>
+
+        {/* Pipeline Multiplier Selector */}
+        <div className="flex items-center space-x-2 bg-[#121212] px-2.5 py-1 rounded-lg border border-[#262626]">
+          <span className="text-[11px] font-mono text-gray-400">Pipeline Multiplier:</span>
+          <div className="flex items-center space-x-1">
+            {[1, 3, 5, 10].map((cnt) => (
+              <button
+                key={cnt}
+                onClick={() => setPipelineCount(cnt)}
+                className={`px-2 py-0.5 rounded font-mono text-xs font-bold transition-all cursor-pointer ${
+                  pipelineCount === cnt
+                    ? 'bg-[#FFD700]/20 text-[#FFD700] border border-[#FFD700]/60'
+                    : 'text-gray-500 hover:text-gray-300'
+                }`}
+              >
+                {cnt} {cnt === 1 ? 'File' : 'Files'}
+              </button>
+            ))}
           </div>
         </div>
       </div>
@@ -355,7 +491,9 @@ export const LoBenchmarkDesk: React.FC<LoBenchmarkDeskProps> = ({
               <div className="text-lg font-mono font-extrabold text-white flex items-baseline justify-between">
                 <span>{coreMbs?.symbol || 'FNMA 30Y 6.0%'}</span>
                 <span className={`text-xs font-bold ${coreMbsChangeBps >= 0 ? 'text-green-400' : 'text-rose-400'}`}>
-                  {coreMbsChangeBps >= 0 ? '+' : ''}{coreMbs?.change32nds ?? 5}/32 (+{coreMbsChangeBps.toFixed(1)} bp)
+                  {displayMode === '32nds'
+                    ? `${coreMbsChangeBps >= 0 ? '+' : ''}${coreMbs?.change32nds ?? 5}/32 (+${coreMbsChangeBps.toFixed(1)} bp)`
+                    : `${coreMbsChangeBps >= 0 ? '+' : ''}${(coreMbsChangeBps / 100).toFixed(3)} pts (+${coreMbsChangeBps.toFixed(1)} bps)`}
                 </span>
               </div>
               <p className="text-[11px] text-gray-400 leading-tight">
