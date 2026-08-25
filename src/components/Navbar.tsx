@@ -3,8 +3,8 @@ import { Radio, Bell, Volume2, VolumeX, ShieldAlert, Sparkles, TrendingUp, Users
 import { MBSQuote, TradingSessionType } from '../types';
 
 interface NavbarProps {
-  activeTab: 'studio' | 'charts' | 'qa' | 'calculator' | 'calendar';
-  setActiveTab: (tab: 'studio' | 'charts' | 'qa' | 'calculator' | 'calendar') => void;
+  activeTab: 'studio' | 'charts' | 'articles' | 'qa' | 'calculator' | 'calendar';
+  setActiveTab: (tab: 'studio' | 'charts' | 'articles' | 'qa' | 'calculator' | 'calendar') => void;
   viewerCount: number;
   quotes: MBSQuote[];
   isAudioLive: boolean;
@@ -150,6 +150,20 @@ export const Navbar: React.FC<NavbarProps> = ({
             }`}
           >
             Live Studio & Feed
+          </button>
+          <button
+            id="nav-articles"
+            onClick={() => setActiveTab('articles')}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center space-x-1.5 ${
+              activeTab === 'articles'
+                ? 'bg-[#1a1a1a] text-[#FFD700] border border-[#FFD700]/40 shadow-md'
+                : 'text-gray-400 hover:text-white hover:bg-[#141414]'
+            }`}
+          >
+            <span>HousingBrief Wire</span>
+            <span className="px-1.5 py-0.2 text-[8px] bg-[#FFD700]/20 text-[#FFD700] border border-[#FFD700]/40 rounded font-mono font-bold">
+              TOP 5
+            </span>
           </button>
           <button
             id="nav-charts"

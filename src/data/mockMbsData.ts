@@ -536,6 +536,26 @@ export const MACRO_INDICES: TapeItem[] = [
 
 export const INITIAL_MARKET_STORIES: MarketStory[] = [
   {
+    id: 'housingbrief-latest',
+    tag: 'TREASURY BUYBACKS',
+    headline: 'HousingBrief: MBS Morning: Slightly Stronger Start Mostly Due to Oil. Treasury News Fails to Inspire (Again)',
+    summary: 'Treasury TGA buybacks equal government spending and cannot artificially suppress yields overall. Morning bond rally driven by overnight drop in fuel prices.',
+    impact: 'bull',
+    badge: 'HousingBrief Featured',
+    timestamp: 'Today Morning',
+    source: 'housingbrief.com / MBS Live',
+  },
+  {
+    id: 'housingbrief-2',
+    tag: 'RATE OUTLOOK',
+    headline: 'HousingBrief: MBS Recap: Tune Out The Noise (Part 2)',
+    summary: 'Treasury buyback expansion does not lower structural rate levels. Lock/float risk remains elevated due to energy swings and corporate debt supply.',
+    impact: 'neut',
+    badge: 'HousingBrief Wire',
+    timestamp: 'Mon, 8:56 PM',
+    source: 'housingbrief.com / MBS Live',
+  },
+  {
     id: 'story-1',
     tag: 'FED POLICY',
     headline: 'Fed Officials Signal Openness to Easing as Labor Conditions Normalize',

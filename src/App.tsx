@@ -16,6 +16,7 @@ import { VolatilityToastContainer } from './components/VolatilityToastContainer'
 import { VolatilityAlertsDrawer } from './components/VolatilityAlertsDrawer';
 import { VolatilityControlBar } from './components/VolatilityControlBar';
 import { LoBenchmarkDesk } from './components/LoBenchmarkDesk';
+import { HousingBriefArticleDesk } from './components/HousingBriefArticleDesk';
 import { playRedVolatilityChime, playGreenVolatilityChime } from './utils/audioAlerts';
 
 import {
@@ -44,7 +45,7 @@ import {
 import { generateIntradayData, decimalTo32nds, deriveMbsPrice, parseTreasuryXml } from './utils/mbsCalculations';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'studio' | 'charts' | 'qa' | 'calculator' | 'calendar'>('studio');
+  const [activeTab, setActiveTab] = useState<'studio' | 'charts' | 'articles' | 'qa' | 'calculator' | 'calendar'>('studio');
   const [quotes, setQuotes] = useState<MBSQuote[]>(INITIAL_QUOTES);
   const [selectedQuoteId, setSelectedQuoteId] = useState<string>('fnma55');
   const [treasuryCurve, setTreasuryCurve] = useState<TreasuryCurveData>(INITIAL_UST_CURVE);
@@ -635,6 +636,29 @@ export default function App() {
               </div>
               <div className="lg:col-span-5">
                 <MarketIntelligenceWidget stories={stories} />
+              </div>
+            </div>
+
+            {/* Featured HousingBrief & MBS Live Wire Desk (Top 5 Articles) */}
+            <HousingBriefArticleDesk />
+          </div>
+        )}
+
+        {/* Tab: HousingBrief Wire & Intelligence Desk */}
+        {activeTab === 'articles' && (
+          <div className="space-y-6">
+            <HousingBriefArticleDesk />
+
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              <div className="lg:col-span-7">
+                <MarketIntelligenceWidget stories={stories} />
+              </div>
+              <div className="lg:col-span-5">
+                <UstYieldCurveCard
+                  curveData={treasuryCurve}
+                  isLoadingLive={isLoadingTreasury}
+                  onRefreshLive={fetchLiveTreasuryData}
+                />
               </div>
             </div>
           </div>
