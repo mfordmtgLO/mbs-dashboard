@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   TrendingUp,
   TrendingDown,
@@ -22,10 +22,20 @@ import {
   Flame,
   Info,
   Gauge,
+  Star,
+  Plus,
+  Trash2,
+  FileSpreadsheet,
+  Save,
+  Grid,
+  Filter,
+  RefreshCw,
+  X,
 } from 'lucide-react';
 import { MBSQuote, TreasuryCurveData } from '../types';
 import { computeLoanDollarImpact, decimalTo32nds, analyze10yAndMbsRepriceOutlook } from '../utils/mbsCalculations';
-import { getFocusRegimeByYield, MBS_FOCUS_REGIMES, MbsFocusRegime } from '../utils/mbsFocusEngine';
+import { getFocusRegimeByYield, MBS_FOCUS_REGIMES, MbsFocusRegime, getOrCreateQuoteForCoupon } from '../utils/mbsFocusEngine';
+import { LoClientPortfolioDesk } from './LoClientPortfolioDesk';
 
 interface LoBenchmarkDeskProps {
   quotes: MBSQuote[];
@@ -35,6 +45,52 @@ interface LoBenchmarkDeskProps {
   onNavigateToTab?: (tab: string) => void;
 }
 
+export type WatchlistPresetType =
+  | 'DYNAMIC_TRIAD'
+  | 'PRODUCTION_ALL'
+  | 'HIGH_RATE_REFI'
+  | 'LEGACY_LOW'
+  | 'CUSTOM'
+  | 'PORTFOLIO_SYNC';
+
+export const WATCHLIST_PRESETS: Record<
+  WatchlistPresetType,
+  { label: string; description: string; coupons: number[] }
+> = {
+  DYNAMIC_TRIAD: {
+    label: '🎯 Dynamic Par Triad (5.5, 6.0, 6.5)',
+    description: 'Active secondary production focus aligned with prevailing 10Y yield regime',
+    coupons: [5.5, 6.0, 6.5],
+  },
+  PRODUCTION_ALL: {
+    label: '📋 Full Production Suite (5.0 – 7.0)',
+    description: 'Wide coverage across active conventional and government production lines',
+    coupons: [5.0, 5.5, 6.0, 6.5, 7.0],
+  },
+  HIGH_RATE_REFI: {
+    label: '🔥 High-Rate Refi Radar (6.5 – 8.0)',
+    description: 'Targeted monitoring for 2023-2024 peak origination refinance opportunities',
+    coupons: [6.5, 7.0, 7.5, 8.0],
+  },
+  LEGACY_LOW: {
+    label: '🏛️ 2020–2022 Low Rate Legacy (3.0 – 4.5)',
+    description: 'Pre-hike pandemic low coupon pools and historical runoff tracking',
+    coupons: [3.0, 3.5, 4.0, 4.5],
+  },
+  CUSTOM: {
+    label: '⭐ My Custom Watchlist',
+    description: 'Custom tailored selection of Fannie Mae & Ginnie Mae coupons',
+    coupons: [5.0, 5.5, 6.0, 6.5, 7.0, 7.5],
+  },
+  PORTFOLIO_SYNC: {
+    label: '📁 Synced from Client Portfolio',
+    description: 'Auto-populated from uploaded loan officer closed pipeline',
+    coupons: [5.5, 6.0, 6.5, 7.0],
+  },
+};
+
+const ALL_STANDARD_COUPONS = [2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.0, 7.5, 8.0, 8.5];
+
 export const LoBenchmarkDesk: React.FC<LoBenchmarkDeskProps> = ({
   quotes,
   treasuryCurve,
@@ -42,6 +98,18 @@ export const LoBenchmarkDesk: React.FC<LoBenchmarkDeskProps> = ({
   onSelectQuote,
   onNavigateToTab,
 }) => {
+  // Top-level Navigation Mode
+  const [activeDeskView, setActiveDeskView] = useState<'benchmarks' | 'portfolio_crm' | 'custom_matrix'>('benchmarks');
+
+  // Watchlist & Coupon Controls
+  const [activePreset, setActivePreset] = useState<WatchlistPresetType>('DYNAMIC_TRIAD');
+  const [customCoupons, setCustomCoupons] = useState<number[]>([5.0, 5.5, 6.0, 6.5, 7.0, 7.5]);
+  const [portfolioSyncedCoupons, setPortfolioSyncedCoupons] = useState<number[]>([5.5, 6.0, 6.5, 7.0]);
+  const [newCustomInput, setNewCustomInput] = useState<string>('');
+  const [savedWatchlistName, setSavedWatchlistName] = useState<string>('');
+  const [watchlistSaveFeedback, setWatchlistSaveFeedback] = useState<string | null>(null);
+
+  // File Sizer & Display Mode
   const [loanAmount, setLoanAmount] = useState<number>(500000);
   const [customLoanInput, setCustomLoanInput] = useState<string>('500,000');
   const [pipelineCount, setPipelineCount] = useState<number>(1);
@@ -74,27 +142,35 @@ export const LoBenchmarkDesk: React.FC<LoBenchmarkDeskProps> = ({
     ? MBS_FOCUS_REGIMES[overrideRegimeId] || MBS_FOCUS_REGIMES.NORMAL_CURRENT
     : getFocusRegimeByYield(current10Y);
 
-  // Dynamic Conventional Fannie Mae 30Y Coupons matching active regime
-  const fnmaLow = quotes.find((q) => q.agency === 'FNMA' && (q.couponRate === activeRegime.lowKeyCoupon || q.symbol.includes(`${activeRegime.lowKeyCoupon}%`)));
-  const fnmaCore = quotes.find((q) => q.agency === 'FNMA' && (q.couponRate === activeRegime.coreKeyCoupon || q.symbol.includes(`${activeRegime.coreKeyCoupon}%`)));
-  const fnmaUpper = quotes.find((q) => q.agency === 'FNMA' && (q.couponRate === activeRegime.upperKeyCoupon || q.symbol.includes(`${activeRegime.upperKeyCoupon}%`)));
+  // Active Monitored Coupons based on selected preset
+  const activeCoupons = useMemo(() => {
+    if (activePreset === 'DYNAMIC_TRIAD') {
+      return [activeRegime.lowKeyCoupon, activeRegime.coreKeyCoupon, activeRegime.upperKeyCoupon];
+    }
+    if (activePreset === 'CUSTOM') {
+      return customCoupons;
+    }
+    if (activePreset === 'PORTFOLIO_SYNC') {
+      return portfolioSyncedCoupons;
+    }
+    return WATCHLIST_PRESETS[activePreset]?.coupons || [5.5, 6.0, 6.5];
+  }, [activePreset, activeRegime, customCoupons, portfolioSyncedCoupons]);
 
-  // Dynamic Government Ginnie Mae II 30Y Coupons matching active regime
-  const gnmaLow = quotes.find((q) => q.agency === 'GNMA' && (q.couponRate === activeRegime.lowKeyCoupon || q.symbol.includes(`${activeRegime.lowKeyCoupon}%`)));
-  const gnmaCore = quotes.find((q) => q.agency === 'GNMA' && (q.couponRate === activeRegime.coreKeyCoupon || q.symbol.includes(`${activeRegime.coreKeyCoupon}%`)));
-  const gnmaUpper = quotes.find((q) => q.agency === 'GNMA' && (q.couponRate === activeRegime.upperKeyCoupon || q.symbol.includes(`${activeRegime.upperKeyCoupon}%`)));
+  // Generate / Retrieve Quotes for All Monitored Coupons
+  const monitoredFnmaQuotes = useMemo(() => {
+    return activeCoupons.map((c) =>
+      getOrCreateQuoteForCoupon('FNMA', c, quotes, current10Y, tenYearUst.changeBps || -4.4)
+    );
+  }, [activeCoupons, quotes, current10Y, tenYearUst.changeBps]);
 
-  // Fallbacks to default focused triad
-  const fnma55 = fnmaLow || quotes.find((q) => q.id === 'fnma55');
-  const fnma60 = fnmaCore || quotes.find((q) => q.id === 'fnma60');
-  const fnma65 = fnmaUpper || quotes.find((q) => q.id === 'fnma65');
+  const monitoredGnmaQuotes = useMemo(() => {
+    return activeCoupons.map((c) =>
+      getOrCreateQuoteForCoupon('GNMA', c, quotes, current10Y, tenYearUst.changeBps || -4.4)
+    );
+  }, [activeCoupons, quotes, current10Y, tenYearUst.changeBps]);
 
-  const gnma55 = gnmaLow || quotes.find((q) => q.id === 'gnma55');
-  const gnma60 = gnmaCore || quotes.find((q) => q.id === 'gnma60');
-  const gnma65 = gnmaUpper || quotes.find((q) => q.id === 'gnma65');
-
-  // Core benchmark MBS coupon for composite reprice calculation (Core Key)
-  const coreMbs = fnma60 || fnma55 || quotes.find((q) => q.agency === 'FNMA') || quotes[0];
+  // Core benchmark quote for composite calculations
+  const coreMbs = monitoredFnmaQuotes.find((q) => q.couponRate === activeRegime.coreKeyCoupon) || monitoredFnmaQuotes[0];
   const coreMbsChangeBps = coreMbs?.changeBps ?? (is10YDown ? 15.4 : -12.0);
 
   // Deep Analysis synthesis
@@ -119,6 +195,42 @@ export const LoBenchmarkDesk: React.FC<LoBenchmarkDeskProps> = ({
     }
   };
 
+  // Toggle a coupon in the custom list
+  const handleToggleCoupon = (coupon: number) => {
+    if (activePreset !== 'CUSTOM') {
+      setActivePreset('CUSTOM');
+    }
+    setCustomCoupons((prev) => {
+      if (prev.includes(coupon)) {
+        if (prev.length <= 1) return prev; // keep at least one
+        return prev.filter((c) => c !== coupon).sort((a, b) => a - b);
+      } else {
+        return [...prev, coupon].sort((a, b) => a - b);
+      }
+    });
+  };
+
+  // Add arbitrary custom coupon (e.g. 5.125 or 7.875)
+  const handleAddCustomCoupon = () => {
+    const parsed = parseFloat(newCustomInput);
+    if (!isNaN(parsed) && parsed >= 1.0 && parsed <= 12.0) {
+      if (!customCoupons.includes(parsed)) {
+        setCustomCoupons((prev) => [...prev, parsed].sort((a, b) => a - b));
+        setActivePreset('CUSTOM');
+      }
+      setNewCustomInput('');
+    }
+  };
+
+  // Sync from Client Portfolio CRM
+  const handleSyncPortfolioCoupons = (coupons: number[]) => {
+    setPortfolioSyncedCoupons(coupons);
+    setActivePreset('PORTFOLIO_SYNC');
+    setActiveDeskView('benchmarks');
+    setWatchlistSaveFeedback(`Synced ${coupons.length} coupons from your client portfolio to the Live Trading Desk!`);
+    setTimeout(() => setWatchlistSaveFeedback(null), 4000);
+  };
+
   const formatPrice = (q?: MBSQuote) => {
     if (!q) return '—';
     if (displayMode === '32nds') {
@@ -131,7 +243,7 @@ export const LoBenchmarkDesk: React.FC<LoBenchmarkDeskProps> = ({
     if (!q) return { primary: '+0/32', secondary: '+0.0 bp', isUp: true };
     const isUp = (q.change32nds ?? 0) >= 0 || (q.changeBps ?? 0) >= 0;
     const prefix = isUp ? '+' : '';
-    
+
     if (displayMode === '32nds') {
       return {
         primary: `${prefix}${q.change32nds ?? 0}/32`,
@@ -139,7 +251,6 @@ export const LoBenchmarkDesk: React.FC<LoBenchmarkDeskProps> = ({
         isUp,
       };
     } else {
-      // In decimal mode, show price change in decimal points (e.g. +0.344 pts)
       const decimalChange = (q.changeBps ?? 0) / 100;
       return {
         primary: `${prefix}${decimalChange.toFixed(3)} pts`,
@@ -151,9 +262,6 @@ export const LoBenchmarkDesk: React.FC<LoBenchmarkDeskProps> = ({
 
   const renderCouponCard = (
     quote: MBSQuote | undefined,
-    couponRate: string,
-    targetNoteRate: string,
-    role: 'LOW_KEY' | 'CORE_KEY' | 'UPPER_KEY',
     agencyLabel: 'CONVENTIONAL' | 'GOVERNMENT'
   ) => {
     if (!quote) return null;
@@ -165,11 +273,18 @@ export const LoBenchmarkDesk: React.FC<LoBenchmarkDeskProps> = ({
 
     const isGov = agencyLabel === 'GOVERNMENT';
     const tagBg = isGov ? 'bg-teal-950/60 border-teal-700/50 text-teal-300' : 'bg-blue-950/60 border-blue-700/50 text-blue-300';
-    const isCore = role === 'CORE_KEY';
-    const isLow = role === 'LOW_KEY';
+    const isCore = quote.couponRate === activeRegime.coreKeyCoupon;
+    const isLow = quote.couponRate === activeRegime.lowKeyCoupon;
+    const isUpper = quote.couponRate === activeRegime.upperKeyCoupon;
+
+    // Estimate matching borrower note rate for this coupon
+    const noteRateEstimate = isGov
+      ? `${(quote.couponRate + 0.375).toFixed(3)}% – ${(quote.couponRate + 0.625).toFixed(3)}%`
+      : `${(quote.couponRate + 0.625).toFixed(3)}% – ${(quote.couponRate + 0.875).toFixed(3)}%`;
 
     return (
       <div
+        key={quote.id}
         id={`lo-coupon-card-${quote.id}`}
         onClick={() => onSelectQuote(quote.id)}
         className={`relative p-3.5 rounded-xl border transition-all cursor-pointer group ${
@@ -194,14 +309,14 @@ export const LoBenchmarkDesk: React.FC<LoBenchmarkDeskProps> = ({
                 LOW KEY (Cushion)
               </span>
             )}
-            {!isCore && !isLow && (
+            {isUpper && (
               <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-amber-950/60 text-amber-300 border border-amber-800/50 tracking-wider">
                 UPPER KEY (Premium)
               </span>
             )}
           </div>
           <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold border ${tagBg}`}>
-            Note: {targetNoteRate}
+            Note: {noteRateEstimate}
           </span>
         </div>
 
@@ -279,36 +394,55 @@ export const LoBenchmarkDesk: React.FC<LoBenchmarkDeskProps> = ({
   };
 
   return (
-    <div className="bg-[#0e0e0e] rounded-2xl border-2 border-[#FFD700]/30 shadow-2xl overflow-hidden">
-      {/* Top Banner Header */}
-      <div className="p-4 sm:p-5 bg-gradient-to-r from-[#171407] via-[#111111] to-[#0c0c0c] border-b border-[#2a2612] flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-start sm:items-center space-x-3.5">
-          <div className="p-2.5 rounded-xl bg-[#FFD700]/15 border border-[#FFD700]/40 text-[#FFD700] shadow-md shrink-0">
-            <Zap className="w-6 h-6 animate-pulse" />
-          </div>
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="px-2 py-0.5 rounded bg-[#FFD700] text-black font-mono font-extrabold text-[10px] uppercase tracking-wider">
-                LOAN OFFICER TRADING DESK
-              </span>
-              <span className="px-2 py-0.5 rounded bg-[#FFD700]/20 text-[#FFD700] border border-[#FFD700]/50 text-[10px] font-mono font-bold">
-                MBS HIGHWAY ACTIVE
-              </span>
-              <span className="px-2 py-0.5 rounded bg-green-950/80 text-green-400 border border-green-800 text-[10px] font-mono font-bold">
-                ● LIVE TICK FEED
-              </span>
-            </div>
-            <h2 className="text-lg sm:text-xl font-extrabold text-white mt-1 tracking-tight">
-              10Y Treasury & Dynamic 3-Coupon Suite (Low Key, Core Key, Upper Key)
-            </h2>
-            <p className="text-xs text-gray-400 mt-0.5 max-w-2xl">
-              Automatic market regime tracking shifts active focus coupons (FNMA/GNMA {activeRegime.lowKeyCoupon}%, {activeRegime.coreKeyCoupon}%, {activeRegime.upperKeyCoupon}%) as 10Y yields trend up or down.
-            </p>
-          </div>
+    <div className="bg-[#0e0e0e] rounded-2xl border-2 border-[#FFD700]/30 shadow-2xl overflow-hidden space-y-0">
+      {/* Top Main Navigation Tabs */}
+      <div className="p-3 bg-[#080808] border-b border-[#222222] flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center space-x-1.5 overflow-x-auto scrollbar-none font-mono text-xs">
+          <button
+            id="tab-btn-benchmarks"
+            onClick={() => setActiveDeskView('benchmarks')}
+            className={`px-3.5 py-1.5 rounded-xl font-bold transition-all cursor-pointer flex items-center space-x-2 ${
+              activeDeskView === 'benchmarks'
+                ? 'bg-[#FFD700] text-black shadow-md font-extrabold'
+                : 'bg-[#151515] text-gray-300 hover:text-white border border-[#2b2b2b]'
+            }`}
+          >
+            <Activity className="w-4 h-4" />
+            <span>📊 Live Benchmark Desk</span>
+          </button>
+
+          <button
+            id="tab-btn-portfolio-crm"
+            onClick={() => setActiveDeskView('portfolio_crm')}
+            className={`px-3.5 py-1.5 rounded-xl font-bold transition-all cursor-pointer flex items-center space-x-2 ${
+              activeDeskView === 'portfolio_crm'
+                ? 'bg-blue-600 text-white shadow-md font-extrabold border-blue-500'
+                : 'bg-[#151515] text-gray-300 hover:text-white border border-[#2b2b2b]'
+            }`}
+          >
+            <FileSpreadsheet className="w-4 h-4 text-[#FFD700]" />
+            <span>📁 Client Portfolio & Refi CRM (CSV/Excel)</span>
+            <span className="px-1.5 py-0.2 rounded bg-amber-400/20 text-[#FFD700] text-[9px] font-bold">
+              AI MAPPING
+            </span>
+          </button>
+
+          <button
+            id="tab-btn-custom-matrix"
+            onClick={() => setActiveDeskView('custom_matrix')}
+            className={`px-3.5 py-1.5 rounded-xl font-bold transition-all cursor-pointer flex items-center space-x-2 ${
+              activeDeskView === 'custom_matrix'
+                ? 'bg-purple-600 text-white shadow-md font-extrabold border-purple-500'
+                : 'bg-[#151515] text-gray-300 hover:text-white border border-[#2b2b2b]'
+            }`}
+          >
+            <Star className="w-4 h-4 text-[#FFD700]" />
+            <span>⭐ Watchlist Builder & Matrix ({activeCoupons.length} Coupons)</span>
+          </button>
         </div>
 
-        {/* Global LO Configs: Pipeline Loan Amount & Display Format */}
-        <div className="flex flex-wrap items-center gap-3">
+        {/* Global LO Configs: Loan Sizer & 32nds Toggle */}
+        <div className="flex flex-wrap items-center gap-2">
           {/* Quick Loan Sizer Dropdown */}
           <div className="flex items-center space-x-1.5 bg-[#141414] p-1.5 rounded-xl border border-[#292929]">
             <DollarSign className="w-4 h-4 text-[#FFD700]" />
@@ -339,7 +473,6 @@ export const LoBenchmarkDesk: React.FC<LoBenchmarkDeskProps> = ({
               }`}
             >
               <span>32nds</span>
-              {displayMode === '32nds' && <span className="text-[9px] opacity-80">(Fractional)</span>}
             </button>
             <button
               id="lo-toggle-decimal"
@@ -351,457 +484,322 @@ export const LoBenchmarkDesk: React.FC<LoBenchmarkDeskProps> = ({
               }`}
             >
               <span>Decimal</span>
-              {displayMode === 'decimal' && <span className="text-[9px] opacity-80">(Exact)</span>}
             </button>
           </div>
         </div>
       </div>
 
-      {/* Barry Habib / MBS Highway Auto-Transition Dynamic Metric Banner */}
-      <div className="px-4 py-3 bg-[#121212] border-b border-[#222222] flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center space-x-2.5">
-          <div className="p-1.5 rounded-lg bg-[#FFD700]/10 border border-[#FFD700]/30 text-[#FFD700]">
-            <Gauge className="w-4 h-4" />
+      {/* Save / Feedback Toast */}
+      {watchlistSaveFeedback && (
+        <div className="px-4 py-2 bg-green-950/90 border-b border-green-700/60 text-green-300 text-xs font-mono flex items-center justify-between animate-in fade-in">
+          <div className="flex items-center space-x-2">
+            <CheckCircle2 className="w-4 h-4 text-green-400" />
+            <span>{watchlistSaveFeedback}</span>
           </div>
-          <div>
-            <div className="flex items-center space-x-2">
-              <span className="text-xs font-mono font-bold text-white">
-                Active Focus Tier: <span className="text-[#FFD700]">{activeRegime.title}</span>
-              </span>
-              <span className="text-[10px] font-mono text-gray-400">
-                ({activeRegime.subtitle})
-              </span>
+          <button onClick={() => setWatchlistSaveFeedback(null)} className="text-green-400 hover:text-white">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* VIEW 1 & VIEW 3: Benchmark Desk OR Watchlist Matrix */}
+      {activeDeskView !== 'portfolio_crm' && (
+        <>
+          {/* Watchlist Presets & Interactive Coupon Quick-Toggle Bar */}
+          <div className="p-3.5 sm:p-4 bg-gradient-to-r from-[#171407] via-[#111111] to-[#0c0c0c] border-b border-[#2a2612] space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center space-x-2.5">
+                <div className="p-2 rounded-xl bg-[#FFD700]/15 border border-[#FFD700]/40 text-[#FFD700] shrink-0">
+                  <Star className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center space-x-2">
+                    <span className="text-xs font-mono font-bold text-white uppercase tracking-wider">
+                      MBS Watchlist Preset:
+                    </span>
+                    <span className="text-xs font-mono text-[#FFD700] font-bold">
+                      {WATCHLIST_PRESETS[activePreset]?.label || activePreset}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-gray-400 font-mono">
+                    {WATCHLIST_PRESETS[activePreset]?.description}
+                  </p>
+                </div>
+              </div>
+
+              {/* Watchlist Preset Selector Tabs */}
+              <div className="flex items-center space-x-1.5 flex-wrap gap-y-1 font-mono text-xs">
+                {(Object.keys(WATCHLIST_PRESETS) as WatchlistPresetType[]).map((presetKey) => (
+                  <button
+                    key={presetKey}
+                    onClick={() => setActivePreset(presetKey)}
+                    className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
+                      activePreset === presetKey
+                        ? 'bg-[#FFD700] text-black shadow-sm font-extrabold ring-1 ring-[#FFD700]'
+                        : 'bg-[#181818] text-gray-400 hover:text-white border border-[#2e2e2e]'
+                    }`}
+                  >
+                    {presetKey === 'DYNAMIC_TRIAD'
+                      ? '🎯 Focused 3-Pack'
+                      : presetKey === 'PRODUCTION_ALL'
+                      ? '📋 5.0–7.0 Production'
+                      : presetKey === 'HIGH_RATE_REFI'
+                      ? '🔥 6.5–8.0 Refi'
+                      : presetKey === 'LEGACY_LOW'
+                      ? '🏛️ 3.0–4.5 Legacy'
+                      : presetKey === 'PORTFOLIO_SYNC'
+                      ? '📁 Synced Pipeline'
+                      : '⭐ Custom'}
+                  </button>
+                ))}
+              </div>
             </div>
-            <p className="text-[11px] text-gray-400 font-mono">
-              {activeRegime.traderFocusSummary}
-            </p>
-          </div>
-        </div>
 
-        {/* Regime Simulator / Auto Selector */}
-        <div className="flex items-center space-x-1.5 text-xs font-mono">
-          <span className="text-[10px] text-gray-400 mr-1 hidden sm:inline">COUPON TIERS:</span>
-          <button
-            id="btn-regime-auto"
-            onClick={() => setOverrideRegimeId(null)}
-            className={`px-2.5 py-1 rounded border text-[11px] transition-all cursor-pointer ${
-              overrideRegimeId === null
-                ? 'bg-[#FFD700] text-black font-bold border-[#FFD700]'
-                : 'bg-[#181818] text-gray-300 border-[#333] hover:text-white'
-            }`}
-            title="Auto-shift based on live 10Y UST Yield"
-          >
-            ⚡ Auto-Track ({current10Y.toFixed(3)}%)
-          </button>
-          <button
-            id="btn-regime-rally"
-            onClick={() => setOverrideRegimeId('RALLY_LOW')}
-            className={`px-2 py-1 rounded border text-[11px] transition-all cursor-pointer ${
-              overrideRegimeId === 'RALLY_LOW'
-                ? 'bg-green-600 text-white font-bold border-green-500'
-                : 'bg-[#181818] text-gray-400 border-[#333] hover:text-green-300'
-            }`}
-            title="Simulate Rally Market (5.0 / 5.5 / 6.0)"
-          >
-            Rally (5.0/5.5/6.0)
-          </button>
-          <button
-            id="btn-regime-current"
-            onClick={() => setOverrideRegimeId('NORMAL_CURRENT')}
-            className={`px-2 py-1 rounded border text-[11px] transition-all cursor-pointer ${
-              overrideRegimeId === 'NORMAL_CURRENT'
-                ? 'bg-blue-600 text-white font-bold border-blue-500'
-                : 'bg-[#181818] text-gray-400 border-[#333] hover:text-blue-300'
-            }`}
-            title="Current Benchmark (5.5 / 6.0 / 6.5)"
-          >
-            Benchmark (5.5/6.0/6.5)
-          </button>
-          <button
-            id="btn-regime-bear"
-            onClick={() => setOverrideRegimeId('BEAR_HIGH')}
-            className={`px-2 py-1 rounded border text-[11px] transition-all cursor-pointer ${
-              overrideRegimeId === 'BEAR_HIGH'
-                ? 'bg-amber-600 text-white font-bold border-amber-500'
-                : 'bg-[#181818] text-gray-400 border-[#333] hover:text-amber-300'
-            }`}
-            title="Simulate High Yield Bear Market (6.0 / 6.5 / 7.0)"
-          >
-            High Yield (6.0/6.5/7.0)
-          </button>
-        </div>
-      </div>
+            {/* Interactive Coupon Chip Toggles (Click to Add / Remove any coupon) */}
+            <div className="pt-2 border-t border-[#242424] flex flex-wrap items-center justify-between gap-2 text-xs font-mono">
+              <div className="flex items-center space-x-1.5 flex-wrap gap-y-1.5">
+                <span className="text-[10px] text-gray-400 uppercase font-bold mr-1">
+                  Active Coupons:
+                </span>
+                {ALL_STANDARD_COUPONS.map((cpn) => {
+                  const isMonitored = activeCoupons.includes(cpn);
+                  return (
+                    <button
+                      key={cpn}
+                      onClick={() => handleToggleCoupon(cpn)}
+                      className={`px-2 py-0.5 rounded text-[11px] font-bold transition-all cursor-pointer flex items-center space-x-1 ${
+                        isMonitored
+                          ? 'bg-[#FFD700] text-black border border-[#FFD700] shadow-xs'
+                          : 'bg-[#161616] text-gray-400 hover:text-gray-200 border border-[#2b2b2b]'
+                      }`}
+                      title={isMonitored ? `Click to remove ${cpn}% coupon` : `Click to add ${cpn}% coupon`}
+                    >
+                      {isMonitored && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                      <span>{cpn.toFixed(1)}%</span>
+                    </button>
+                  );
+                })}
 
-      {/* Interactive Loan Officer File Sizer & Pricing Impact Bar */}
-      <div className="p-3.5 sm:p-4 bg-[#0a0a0a] border-b border-[#222222] flex flex-wrap items-center justify-between gap-3 text-xs">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[11px] font-mono text-[#FFD700] font-bold flex items-center gap-1 uppercase">
-            <DollarSign className="w-3.5 h-3.5 text-[#FFD700]" />
-            Active Loan Size:
-          </span>
+                {/* Add Custom Coupon Input */}
+                <div className="flex items-center space-x-1 ml-1">
+                  <input
+                    type="number"
+                    step="0.125"
+                    value={newCustomInput}
+                    onChange={(e) => setNewCustomInput(e.target.value)}
+                    placeholder="+ Custom %"
+                    className="w-20 bg-[#161616] border border-[#333333] rounded px-1.5 py-0.5 text-[10px] text-white focus:outline-none focus:border-[#FFD700]"
+                  />
+                  <button
+                    onClick={handleAddCustomCoupon}
+                    className="px-2 py-0.5 rounded bg-[#242424] hover:bg-[#333333] text-[#FFD700] text-[10px] font-bold"
+                  >
+                    Add
+                  </button>
+                </div>
+              </div>
 
-          {/* Quick Preset Buttons */}
-          <div className="flex flex-wrap items-center gap-1.5">
-            {presetAmounts.map((amt) => {
-              const isSelectedAmt = loanAmount === amt;
-              return (
-                <button
-                  key={amt}
-                  onClick={() => handleSelectLoanAmount(amt)}
-                  className={`px-2.5 py-1 rounded-lg font-mono text-xs font-bold transition-all cursor-pointer ${
-                    isSelectedAmt
-                      ? 'bg-[#FFD700] text-black shadow-sm'
-                      : 'bg-[#161616] text-gray-400 hover:text-white hover:bg-[#202020] border border-[#2a2a2a]'
-                  }`}
-                >
-                  ${(amt / 1000).toFixed(0)}k
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Quick Increment / Decrement & Custom Input */}
-          <div className="flex items-center space-x-1 bg-[#141414] px-2 py-0.5 rounded-lg border border-[#282828]">
-            <button
-              onClick={() => handleSelectLoanAmount(Math.max(50000, loanAmount - 50000))}
-              className="text-gray-400 hover:text-white px-1.5 py-0.5 rounded font-mono text-xs hover:bg-[#222222] cursor-pointer"
-              title="Decrease $50k"
-            >
-              -$50k
-            </button>
-            <div className="flex items-center text-white font-mono text-xs font-bold px-1">
-              <span className="text-gray-500 mr-0.5">$</span>
-              <input
-                type="text"
-                value={customLoanInput}
-                onChange={(e) => handleCustomLoanChange(e.target.value)}
-                className="w-20 bg-transparent text-white font-mono font-bold focus:outline-none text-center"
-                placeholder="500,000"
-              />
-            </div>
-            <button
-              onClick={() => handleSelectLoanAmount(loanAmount + 50000)}
-              className="text-gray-400 hover:text-white px-1.5 py-0.5 rounded font-mono text-xs hover:bg-[#222222] cursor-pointer"
-              title="Increase $50k"
-            >
-              +$50k
-            </button>
-          </div>
-        </div>
-
-        {/* Pipeline Multiplier Selector */}
-        <div className="flex items-center space-x-2 bg-[#121212] px-2.5 py-1 rounded-lg border border-[#262626]">
-          <span className="text-[11px] font-mono text-gray-400">Pipeline Multiplier:</span>
-          <div className="flex items-center space-x-1">
-            {[1, 3, 5, 10].map((cnt) => (
+              {/* Quick Jump to CSV Import */}
               <button
-                key={cnt}
-                onClick={() => setPipelineCount(cnt)}
-                className={`px-2 py-0.5 rounded font-mono text-xs font-bold transition-all cursor-pointer ${
-                  pipelineCount === cnt
-                    ? 'bg-[#FFD700]/20 text-[#FFD700] border border-[#FFD700]/60'
-                    : 'text-gray-500 hover:text-gray-300'
-                }`}
+                onClick={() => setActiveDeskView('portfolio_crm')}
+                className="text-[#FFD700] hover:underline flex items-center space-x-1 text-[11px]"
               >
-                {cnt} {cnt === 1 ? 'File' : 'Files'}
+                <FileSpreadsheet className="w-3.5 h-3.5" />
+                <span>Upload Client Closings (CSV/Excel) →</span>
               </button>
-            ))}
+            </div>
           </div>
-        </div>
-      </div>
 
-      {/* Deep Analysis: 10Y Yield & MBS Coupon Dual-Signal Correlation & Reprice Desk */}
-      <div className="p-4 sm:p-5 border-b border-[#222222] bg-[#0c0c0c]/80">
-        <div className="bg-gradient-to-r from-[#141414] via-[#161616] to-[#121212] rounded-xl border border-[#2c2c2c] p-4 sm:p-5 shadow-lg">
-          <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-[#242424]">
-            <div className="flex items-center space-x-2.5">
-              <div className="p-2 rounded-lg bg-[#FFD700]/10 border border-[#FFD700]/30 text-[#FFD700]">
-                <Scale className="w-5 h-5" />
+          {/* Reprice Risk Gauge Bar */}
+          <div className="px-4 py-3 bg-[#121212] border-b border-[#222222] flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center space-x-3">
+              <div className="p-1.5 rounded-lg bg-[#FFD700]/10 border border-[#FFD700]/30 text-[#FFD700]">
+                <Shield className="w-4 h-4" />
               </div>
               <div>
-                <h3 className="text-sm font-extrabold text-white uppercase tracking-wider flex items-center gap-2 font-mono">
-                  10Y Treasury & MBS Reprice Dynamics Analysis
-                  <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-[#FFD700]/10 text-[#FFD700] border border-[#FFD700]/30">
-                    DUAL SIGNAL ENGINE
+                <div className="flex items-center space-x-2">
+                  <span className="text-xs font-mono font-bold text-white">
+                    Reprice Risk Outlook:
                   </span>
-                </h3>
-                <p className="text-xs text-gray-400">
-                  Synthesized correlation of benchmark yields and wholesale MBS pricing for mortgage loan originators.
+                  <span
+                    className={`text-xs font-mono font-extrabold ${
+                      repriceOutlook.status === 'POSITIVE_REPRICE'
+                        ? 'text-green-400'
+                        : repriceOutlook.status === 'NEGATIVE_REPRICE_RISK'
+                        ? 'text-rose-400'
+                        : 'text-[#FFD700]'
+                    }`}
+                  >
+                    {repriceOutlook.headline} ({repriceOutlook.repriceProbability}% probability)
+                  </span>
+                </div>
+                <p className="text-[11px] text-gray-400 font-mono">
+                  {repriceOutlook.explanation}
                 </p>
               </div>
             </div>
 
-            {/* Reprice Status Badge */}
-            <div className="flex items-center space-x-2">
-              <div
-                className={`px-3 py-1.5 rounded-lg border font-mono text-xs font-bold flex items-center space-x-2 ${repriceOutlook.badgeBg} ${repriceOutlook.badgeBorder} ${repriceOutlook.badgeColor}`}
+            <div className="flex items-center space-x-2 text-xs font-mono">
+              <span className="text-gray-400">Origination Directive:</span>
+              <span className="px-2 py-0.5 rounded bg-[#1f1a07] text-[#FFD700] border border-[#FFD700]/40 font-bold">
+                {repriceOutlook.originatorGuidance}
+              </span>
+            </div>
+          </div>
+
+          {/* Main 3-Pillar / Multi-Coupon Grid */}
+          <div className="p-4 sm:p-5 grid grid-cols-1 lg:grid-cols-11 gap-4 bg-[#0a0a0a]">
+            {/* Pillar 1: 👑 10Y Benchmark Treasury Yield (3 cols on lg) */}
+            <div className="lg:col-span-3 bg-[#121212] rounded-xl border border-[#262626] p-4 flex flex-col justify-between shadow-lg">
+              <div>
+                {/* Header */}
+                <div className="flex items-center justify-between pb-3 border-b border-[#222222]">
+                  <div className="flex items-center space-x-2">
+                    <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></div>
+                    <span className="font-mono font-extrabold text-sm text-white">10Y BENCHMARK</span>
+                  </div>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-[#1e1b07] text-[#FFD700] border border-[#FFD700]/40">
+                    UST YIELD
+                  </span>
+                </div>
+
+                {/* Live Yield Display */}
+                <div className="my-3 space-y-1">
+                  <div className="text-[10px] uppercase font-mono text-gray-400">Current Yield Rate</div>
+                  <div className="text-3xl font-mono font-extrabold text-white tracking-tight flex items-baseline justify-between">
+                    <span>{current10Y.toFixed(3)}%</span>
+                    <span
+                      className={`text-xs font-mono font-bold px-2 py-0.5 rounded ${
+                        is10YDown
+                          ? 'bg-green-950 text-green-400 border border-green-800'
+                          : 'bg-rose-950 text-rose-400 border border-rose-800'
+                      }`}
+                    >
+                      {tenYearUst.changeBps && tenYearUst.changeBps > 0 ? '+' : ''}
+                      {(tenYearUst.changeBps ?? -4.4).toFixed(1)} bp
+                    </span>
+                  </div>
+                </div>
+
+                {/* Day Range */}
+                <div className="grid grid-cols-2 gap-2 py-2 border-y border-[#202020] font-mono text-[11px]">
+                  <div>
+                    <div className="text-[9px] uppercase text-gray-500">Day Low</div>
+                    <div className="text-xs font-bold text-green-400">{tenYearUst.low || '4.622%'}</div>
+                  </div>
+                  <div>
+                    <div className="text-[9px] uppercase text-gray-500">Day High</div>
+                    <div className="text-xs font-bold text-rose-400">{tenYearUst.high || '4.705%'}</div>
+                  </div>
+                </div>
+
+                {/* Par Mortgage Correlation Box */}
+                <div className="mt-3.5 p-3 rounded-lg bg-[#161616] border border-[#262626] space-y-1.5">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-gray-400 font-mono">Est. 30Y Primary Par:</span>
+                    <span className="text-[#FFD700] font-mono font-bold">~6.625%</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-gray-400 font-mono">Primary Spread vs 10Y:</span>
+                    <span className="text-blue-400 font-mono font-bold">+234 bps</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-gray-400 font-mono">2Y / 10Y Curve Spread:</span>
+                    <span className="text-purple-400 font-mono font-bold">
+                      {treasuryCurve.curve2y10y !== null && treasuryCurve.curve2y10y !== undefined
+                        ? `${treasuryCurve.curve2y10y > 0 ? '+' : ''}${treasuryCurve.curve2y10y.toFixed(3)}%`
+                        : '+0.452%'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Quick Select 10Y */}
+              <button
+                id="btn-select-10y-benchmark"
+                onClick={() => onSelectQuote('us-10y-treasury')}
+                className={`mt-4 w-full py-2 px-3 rounded-lg font-mono text-xs font-bold flex items-center justify-center space-x-1.5 transition-all cursor-pointer ${
+                  selectedQuoteId === 'us-10y-treasury'
+                    ? 'bg-[#FFD700] text-black shadow-md'
+                    : 'bg-[#1c1c1c] text-gray-300 hover:bg-[#252525] border border-[#333333]'
+                }`}
               >
-                {repriceOutlook.status === 'POSITIVE_REPRICE' ? (
-                  <Check className="w-4 h-4 text-green-400" />
-                ) : repriceOutlook.status === 'NEGATIVE_REPRICE_RISK' ? (
-                  <AlertTriangle className="w-4 h-4 text-rose-400" />
-                ) : (
-                  <Info className="w-4 h-4 text-amber-400" />
-                )}
-                <span>{repriceOutlook.headline}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Dual Signal Comparison & Strategic Outcome Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 my-3.5">
-            {/* Signal 1: 10Y Benchmark UST */}
-            <div className="p-3.5 rounded-xl bg-[#0e0e0e] border border-[#202020] space-y-1.5">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] uppercase font-mono text-gray-400 font-bold">Signal 1: 10Y Benchmark</span>
-                <span
-                  className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded ${
-                    is10YDown
-                      ? 'bg-green-950 text-green-300 border border-green-800/60'
-                      : 'bg-rose-950 text-rose-300 border border-rose-800/60'
-                  }`}
-                >
-                  {is10YDown ? 'YIELD DOWN (BULLISH)' : 'YIELD UP (BEARISH)'}
-                </span>
-              </div>
-              <div className="text-lg font-mono font-extrabold text-white flex items-baseline justify-between">
-                <span>{current10Y.toFixed(3)}%</span>
-                <span className={`text-xs font-bold ${is10YDown ? 'text-green-400' : 'text-rose-400'}`}>
-                  {tenYearUst.changeBps > 0 ? '+' : ''}{tenYearUst.changeBps.toFixed(1)} bps
-                </span>
-              </div>
-              <p className="text-[11px] text-gray-400 leading-tight">
-                {is10YDown
-                  ? 'Lower Treasury yield lowers the cost of capital, reducing rate sheet note rates.'
-                  : 'Higher Treasury yield drives bond yields up and pressures rate sheets.'}
-              </p>
+                <Activity className="w-3.5 h-3.5" />
+                <span>{selectedQuoteId === 'us-10y-treasury' ? '10Y Selected for Chart' : 'Inspect 10Y Chart & Spreads'}</span>
+              </button>
             </div>
 
-            {/* Signal 2: Production MBS Coupons */}
-            <div className="p-3.5 rounded-xl bg-[#0e0e0e] border border-[#202020] space-y-1.5">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] uppercase font-mono text-gray-400 font-bold">Signal 2: 30Y MBS Coupons</span>
-                <span
-                  className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded ${
-                    coreMbsChangeBps >= 0
-                      ? 'bg-green-950 text-green-300 border border-green-800/60'
-                      : 'bg-rose-950 text-rose-300 border border-rose-800/60'
-                  }`}
-                >
-                  {coreMbsChangeBps >= 0 ? 'PRICE UP (BULLISH)' : 'PRICE DOWN (BEARISH)'}
-                </span>
-              </div>
-              <div className="text-lg font-mono font-extrabold text-white flex items-baseline justify-between">
-                <span>{coreMbs?.symbol || 'FNMA 30Y 6.0%'}</span>
-                <span className={`text-xs font-bold ${coreMbsChangeBps >= 0 ? 'text-green-400' : 'text-rose-400'}`}>
-                  {displayMode === '32nds'
-                    ? `${coreMbsChangeBps >= 0 ? '+' : ''}${coreMbs?.change32nds ?? 5}/32 (+${coreMbsChangeBps.toFixed(1)} bp)`
-                    : `${coreMbsChangeBps >= 0 ? '+' : ''}${(coreMbsChangeBps / 100).toFixed(3)} pts (+${coreMbsChangeBps.toFixed(1)} bps)`}
-                </span>
-              </div>
-              <p className="text-[11px] text-gray-400 leading-tight">
-                {coreMbsChangeBps >= 0
-                  ? 'Higher MBS coupon prices increase wholesale secondary value, improving lender credits.'
-                  : 'Lower MBS coupon prices erode lender margins and increase borrower costs.'}
-              </p>
-            </div>
-
-            {/* Synthesis: Combined Market Consequence */}
-            <div className="p-3.5 rounded-xl bg-[#111111] border border-[#2c2c2c] space-y-1.5 flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] uppercase font-mono text-[#FFD700] font-bold">Rate Sheet Forecast</span>
-                  <span className="text-[10px] font-mono text-gray-400">Confidence: {repriceOutlook.repriceProbability}%</span>
-                </div>
-                <div className="text-sm font-mono font-extrabold mt-1">
-                  <span className={repriceOutlook.rateOutlookColor}>
-                    Mortgage Rates: {repriceOutlook.rateOutlook}
+            {/* Pillar 2: 🔵 Conventional Fannie Mae 30Y (4 cols on lg) */}
+            <div className="lg:col-span-4 bg-[#121212] rounded-xl border border-[#262626] p-4 flex flex-col justify-between shadow-lg">
+              <div className="space-y-3">
+                {/* Header */}
+                <div className="flex items-center justify-between pb-3 border-b border-[#222222]">
+                  <div className="flex items-center space-x-2">
+                    <div className="w-2.5 h-2.5 rounded-full bg-blue-500"></div>
+                    <span className="font-mono font-extrabold text-sm text-white">CONVENTIONAL 30Y</span>
+                  </div>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-blue-950/80 text-blue-300 border border-blue-800/60">
+                    FANNIE MAE UMBS ({monitoredFnmaQuotes.length} Coupons)
                   </span>
                 </div>
-              </div>
-              <div className="pt-1.5 border-t border-[#202020] text-[11px] text-gray-300 font-mono">
-                Est. Rate Sheet Shift: <strong className="text-white">{repriceOutlook.estimatedRateSheetShift}</strong>
-              </div>
-            </div>
-          </div>
 
-          {/* Deep Narrative Explanation */}
-          <div className="p-3 rounded-lg bg-[#080808] border border-[#1e1e1e] flex items-start space-x-2.5 text-xs text-gray-300 leading-relaxed">
-            <Info className="w-4 h-4 text-[#FFD700] shrink-0 mt-0.5" />
-            <div>
-              <p>{repriceOutlook.explanation}</p>
-              <div className="mt-1 font-mono text-[11px] text-[#FFD700] font-bold">
-                RECOMMENDED STRATEGY: {repriceOutlook.originatorGuidance}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* 3 Pillar Grids: 10Y Benchmark UST | Conventional Fannie Mae | Government Ginnie Mae */}
-      <div className="p-4 sm:p-5 grid grid-cols-1 lg:grid-cols-12 gap-5">
-        
-        {/* Pillar 1: 🏛️ US 10-Year Benchmark Treasury (4 cols on lg) */}
-        <div className="lg:col-span-4 bg-[#121212] rounded-xl border border-[#262626] p-4 flex flex-col justify-between shadow-lg">
-          <div>
-            {/* Header */}
-            <div className="flex items-center justify-between pb-3 border-b border-[#222222]">
-              <div className="flex items-center space-x-2">
-                <div className="w-2.5 h-2.5 rounded-full bg-green-400 animate-pulse"></div>
-                <span className="font-mono font-extrabold text-sm text-white">US 10Y BENCHMARK</span>
-              </div>
-              <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-green-950/60 text-green-300 border border-green-800/60 flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-green-400"></span>
-                CNBC LIVE
-              </span>
-            </div>
-
-            {/* Yield Large Callout */}
-            <div className="my-4">
-              <div className="text-xs uppercase font-mono text-gray-400">10-Year Treasury Yield</div>
-              <div className="flex items-baseline justify-between gap-2 mt-1">
-                <div className="text-3xl sm:text-4xl font-extrabold font-mono text-white tracking-tight">
-                  {current10Y.toFixed(3)}%
-                </div>
-                <div
-                  className={`inline-flex items-center px-2.5 py-1 rounded-lg font-mono text-xs font-bold ${
-                    is10YDown
-                      ? 'bg-green-950/80 text-green-400 border border-green-700/60'
-                      : 'bg-rose-950/80 text-rose-400 border border-rose-700/60'
-                  }`}
-                >
-                  {is10YDown ? (
-                    <TrendingDown className="w-4 h-4 mr-1 text-green-400" />
-                  ) : (
-                    <TrendingUp className="w-4 h-4 mr-1 text-rose-400" />
-                  )}
-                  <span>{tenYearUst.changeBps > 0 ? '+' : ''}{tenYearUst.changeBps.toFixed(1)} bps</span>
+                {/* Monitored Conventional Coupons */}
+                <div className="space-y-2.5 max-h-[480px] overflow-y-auto pr-1">
+                  {monitoredFnmaQuotes.map((q) => renderCouponCard(q, 'CONVENTIONAL'))}
                 </div>
               </div>
-              <p className="text-[11px] text-gray-400 mt-1">
-                {is10YDown ? (
-                  <span className="text-green-400 font-semibold">
-                    ▼ 10Y Yield falling & MBS coupons rising = Mortgage rates dropping/improving (Positive reprice opportunity)
+
+              <div className="mt-3 text-[11px] text-gray-400 font-mono bg-[#0c0c0c] p-2 rounded-lg border border-[#1f1f1f] flex items-center justify-between">
+                <span>Primary Conventional Driver:</span>
+                <span className="text-[#FFD700] font-bold">FNMA {activeRegime.coreKeyCoupon}% (★ Core Key)</span>
+              </div>
+            </div>
+
+            {/* Pillar 3: 🔴 Government Ginnie Mae II 30Y FHA/VA (4 cols on lg) */}
+            <div className="lg:col-span-4 bg-[#121212] rounded-xl border border-[#262626] p-4 flex flex-col justify-between shadow-lg">
+              <div className="space-y-3">
+                {/* Header */}
+                <div className="flex items-center justify-between pb-3 border-b border-[#222222]">
+                  <div className="flex items-center space-x-2">
+                    <div className="w-2.5 h-2.5 rounded-full bg-teal-500"></div>
+                    <span className="font-mono font-extrabold text-sm text-white">GOVERNMENT 30Y</span>
+                  </div>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-teal-950/80 text-teal-300 border border-teal-800/60">
+                    GINNIE MAE II (FHA/VA) ({monitoredGnmaQuotes.length} Coupons)
                   </span>
-                ) : (
-                  <span className="text-rose-400 font-semibold">
-                    ▲ 10Y Yield surging & MBS coupons falling = Mortgage rates rising/worsening (Negative reprice risk)
-                  </span>
-                )}
-              </p>
-            </div>
+                </div>
 
-            {/* 10Y Quick Technical Metrics */}
-            <div className="grid grid-cols-3 gap-2 p-2.5 rounded-lg bg-[#0a0a0a] border border-[#222222] text-center font-mono">
-              <div>
-                <div className="text-[9px] uppercase text-gray-500">Day Open</div>
-                <div className="text-xs font-bold text-gray-200">{tenYearUst.open || '4.704%'}</div>
+                {/* Monitored Government Coupons */}
+                <div className="space-y-2.5 max-h-[480px] overflow-y-auto pr-1">
+                  {monitoredGnmaQuotes.map((q) => renderCouponCard(q, 'GOVERNMENT'))}
+                </div>
               </div>
-              <div>
-                <div className="text-[9px] uppercase text-gray-500">Day Low</div>
-                <div className="text-xs font-bold text-green-400">{tenYearUst.low || '4.622%'}</div>
-              </div>
-              <div>
-                <div className="text-[9px] uppercase text-gray-500">Day High</div>
-                <div className="text-xs font-bold text-rose-400">{tenYearUst.high || '4.705%'}</div>
-              </div>
-            </div>
 
-            {/* Par Mortgage Correlation Box */}
-            <div className="mt-3.5 p-3 rounded-lg bg-[#161616] border border-[#262626] space-y-1.5">
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-gray-400 font-mono">Est. 30Y Primary Par:</span>
-                <span className="text-[#FFD700] font-mono font-bold">~6.625%</span>
-              </div>
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-gray-400 font-mono">Primary Spread vs 10Y:</span>
-                <span className="text-blue-400 font-mono font-bold">+234 bps</span>
-              </div>
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-gray-400 font-mono">2Y / 10Y Curve Spread:</span>
-                <span className="text-purple-400 font-mono font-bold">
-                  {treasuryCurve.curve2y10y !== null && treasuryCurve.curve2y10y !== undefined
-                    ? `${treasuryCurve.curve2y10y > 0 ? '+' : ''}${treasuryCurve.curve2y10y.toFixed(3)}%`
-                    : '-0.128%'}
-                </span>
+              <div className="mt-3 text-[11px] text-gray-400 font-mono bg-[#0c0c0c] p-2 rounded-lg border border-[#1f1f1f] flex items-center justify-between">
+                <span>Primary Government Driver:</span>
+                <span className="text-teal-400 font-bold">GNMA II {activeRegime.coreKeyCoupon}% (★ Core Key)</span>
               </div>
             </div>
           </div>
+        </>
+      )}
 
-          {/* Quick Select 10Y */}
-          <button
-            id="btn-select-10y-benchmark"
-            onClick={() => onSelectQuote('us-10y-treasury')}
-            className={`mt-4 w-full py-2 px-3 rounded-lg font-mono text-xs font-bold flex items-center justify-center space-x-1.5 transition-all cursor-pointer ${
-              selectedQuoteId === 'us-10y-treasury'
-                ? 'bg-[#FFD700] text-black shadow-md'
-                : 'bg-[#1c1c1c] text-gray-300 hover:bg-[#252525] border border-[#333333]'
-            }`}
-          >
-            <Activity className="w-3.5 h-3.5" />
-            <span>{selectedQuoteId === 'us-10y-treasury' ? '10Y Selected for Chart' : 'Inspect 10Y Chart & Spreads'}</span>
-          </button>
+      {/* VIEW 2: Client Portfolio & Refi CRM Engine */}
+      {activeDeskView === 'portfolio_crm' && (
+        <div className="p-4 bg-[#0a0a0a]">
+          <LoClientPortfolioDesk
+            quotes={quotes}
+            current10YYield={current10Y}
+            onSyncPortfolioCouponsToWatchlist={handleSyncPortfolioCoupons}
+            onSelectCouponForChart={(sym) => {
+              const matched = quotes.find((q) => q.symbol.includes(sym));
+              if (matched) onSelectQuote(matched.id);
+            }}
+          />
         </div>
+      )}
 
-        {/* Pillar 2: 🔵 Conventional Fannie Mae 30Y (4 cols on lg) */}
-        <div className="lg:col-span-4 bg-[#121212] rounded-xl border border-[#262626] p-4 flex flex-col justify-between shadow-lg">
-          <div className="space-y-3">
-            {/* Header */}
-            <div className="flex items-center justify-between pb-3 border-b border-[#222222]">
-              <div className="flex items-center space-x-2">
-                <div className="w-2.5 h-2.5 rounded-full bg-blue-500"></div>
-                <span className="font-mono font-extrabold text-sm text-white">CONVENTIONAL 30Y</span>
-              </div>
-              <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-blue-950/80 text-blue-300 border border-blue-800/60">
-                FANNIE MAE UMBS
-              </span>
-            </div>
-
-            {/* Dynamic Focused Coupons: Low Key, Core Key, Upper Key */}
-            <div className="space-y-2.5">
-              {renderCouponCard(fnma55, `${activeRegime.lowKeyCoupon}%`, activeRegime.noteRateRangeLow, 'LOW_KEY', 'CONVENTIONAL')}
-              {renderCouponCard(fnma60, `${activeRegime.coreKeyCoupon}%`, activeRegime.noteRateRangeCore, 'CORE_KEY', 'CONVENTIONAL')}
-              {renderCouponCard(fnma65, `${activeRegime.upperKeyCoupon}%`, activeRegime.noteRateRangeUpper, 'UPPER_KEY', 'CONVENTIONAL')}
-            </div>
-          </div>
-
-          <div className="mt-3 text-[11px] text-gray-400 font-mono bg-[#0c0c0c] p-2 rounded-lg border border-[#1f1f1f] flex items-center justify-between">
-            <span>Primary Conventional Driver:</span>
-            <span className="text-[#FFD700] font-bold">FNMA {activeRegime.coreKeyCoupon}% (★ Core Key)</span>
-          </div>
-        </div>
-
-        {/* Pillar 3: 🔴 Government Ginnie Mae II 30Y FHA/VA (4 cols on lg) */}
-        <div className="lg:col-span-4 bg-[#121212] rounded-xl border border-[#262626] p-4 flex flex-col justify-between shadow-lg">
-          <div className="space-y-3">
-            {/* Header */}
-            <div className="flex items-center justify-between pb-3 border-b border-[#222222]">
-              <div className="flex items-center space-x-2">
-                <div className="w-2.5 h-2.5 rounded-full bg-teal-500"></div>
-                <span className="font-mono font-extrabold text-sm text-white">GOVERNMENT 30Y</span>
-              </div>
-              <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-teal-950/80 text-teal-300 border border-teal-800/60">
-                GINNIE MAE II (FHA/VA)
-              </span>
-            </div>
-
-            {/* Dynamic Focused Coupons: Low Key, Core Key, Upper Key */}
-            <div className="space-y-2.5">
-              {renderCouponCard(gnma55, `${activeRegime.lowKeyCoupon}%`, activeRegime.noteRateRangeLow, 'LOW_KEY', 'GOVERNMENT')}
-              {renderCouponCard(gnma60, `${activeRegime.coreKeyCoupon}%`, activeRegime.noteRateRangeCore, 'CORE_KEY', 'GOVERNMENT')}
-              {renderCouponCard(gnma65, `${activeRegime.upperKeyCoupon}%`, activeRegime.noteRateRangeUpper, 'UPPER_KEY', 'GOVERNMENT')}
-            </div>
-          </div>
-
-          <div className="mt-3 text-[11px] text-gray-400 font-mono bg-[#0c0c0c] p-2 rounded-lg border border-[#1f1f1f] flex items-center justify-between">
-            <span>Primary Government Driver:</span>
-            <span className="text-teal-400 font-bold">GNMA II {activeRegime.coreKeyCoupon}% (★ Core Key)</span>
-          </div>
-        </div>
-
-      </div>
-
-      {/* Bottom Quick-Action Bar for Loan Officers */}
+      {/* Bottom Action Bar */}
       <div className="px-4 py-3 bg-[#0a0a0a] border-t border-[#222222] flex flex-wrap items-center justify-between gap-3 text-xs">
         <div className="flex items-center space-x-2 text-gray-400 font-mono">
           <Lock className="w-3.5 h-3.5 text-[#FFD700]" />

@@ -247,3 +247,84 @@ export function generateFocusedQuotes(
     mortgageSpread,
   ];
 }
+
+/**
+ * Retrieve or dynamically generate a quote for any arbitrary coupon rate across FNMA or GNMA
+ */
+export function getOrCreateQuoteForCoupon(
+  agency: 'FNMA' | 'GNMA' | 'FHLMC',
+  couponRate: number,
+  existingQuotes: MBSQuote[],
+  y10Yield: number = 4.660,
+  y10ChangeBps: number = -4.4
+): MBSQuote {
+  const normAgency = agency === 'FHLMC' ? 'FNMA' : agency;
+  const existing = existingQuotes.find(
+    (q) => (q.agency === normAgency || q.agency === agency) && (q.couponRate === couponRate || q.symbol.includes(`${couponRate.toFixed(1)}%`))
+  );
+
+  if (existing) {
+    return existing;
+  }
+
+  // Calculate dynamic quote for arbitrary coupon
+  const isFnma = normAgency === 'FNMA';
+  const id = `${normAgency.toLowerCase()}${Math.round(couponRate * 10)}`;
+  const symbol = `${normAgency} 30Y ${couponRate.toFixed(1)}%`;
+  const name = `${isFnma ? 'Fannie Mae' : 'Ginnie Mae II'} 30Y ${couponRate.toFixed(1)}%`;
+
+  const mbsDayChangeBps = Math.round(-y10ChangeBps * 3.8);
+  const mbsDayChange32nds = Math.round(mbsDayChangeBps * 0.32);
+
+  // Price calculation relative to 6.0% @ 101.125
+  const diffFrom60 = couponRate - 6.0;
+  const agencyAdjustment = isFnma ? 0 : 0.3125;
+  const basePrice = 101.125 + diffFrom60 * 2.8125 + agencyAdjustment;
+
+  const duration = +(Math.max(1.8, 3.8 - (couponRate - 5.0) * 0.5)).toFixed(1);
+  const histOas = Math.round(Math.max(8, 22 - (couponRate - 5.0) * 4));
+  const yieldRate = +(y10Yield + (histOas / 100) - (couponRate - 6.0) * 0.05).toFixed(3);
+  const volBillions = isFnma ? 3.5 : 1.1;
+
+  const price = +basePrice.toFixed(4);
+  const priceFormatted = decimalTo32nds(price);
+  const change32nds = mbsDayChange32nds;
+  const changeBps = +(change32nds / 0.32).toFixed(1);
+
+  const highDec = price + 0.1875;
+  const lowDec = price - 0.21875;
+  const openDec = price - (change32nds / 32);
+
+  return {
+    id,
+    symbol,
+    name,
+    agency: normAgency,
+    category: isFnma ? 'UMBS_30Y' : 'GNMA_30Y',
+    price,
+    priceFormatted,
+    change32nds,
+    changeBps,
+    yieldRate,
+    yieldChange: +(y10ChangeBps * 0.45).toFixed(1),
+    duration,
+    histOas,
+    grossSpreadBps: histOas,
+    volBillions,
+    high: decimalTo32nds(highDec),
+    low: decimalTo32nds(lowDec),
+    open: decimalTo32nds(openDec),
+    volume: `$${volBillions.toFixed(2)}B`,
+    couponRate,
+    lastUpdated: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }) + ' EST',
+    sparkline: [
+      +(price - 0.30).toFixed(2),
+      +(price - 0.22).toFixed(2),
+      +(price - 0.15).toFixed(2),
+      +(price - 0.08).toFixed(2),
+      +(price - 0.02).toFixed(2),
+      +price.toFixed(2),
+    ],
+  };
+}
+
