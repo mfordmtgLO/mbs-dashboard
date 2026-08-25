@@ -95,6 +95,22 @@ export interface CommentaryMessage {
   likes: number;
 }
 
+export interface GroundingSource {
+  title: string;
+  uri: string;
+}
+
+export interface SearchGroundedAnalysis {
+  query: string;
+  headline: string;
+  summary: string;
+  keyDrivers: string[];
+  lockFloatImpact: string;
+  groundingSources: GroundingSource[];
+  searchQueries: string[];
+  timestamp: string;
+}
+
 export interface QAQuestion {
   id: string;
   authorName: string;
@@ -108,6 +124,7 @@ export interface QAQuestion {
   status: 'answering_live' | 'answered' | 'queued';
   answerText?: string;
   answeredBy?: string;
+  groundingSources?: GroundingSource[];
   timestamp: string;
   priority?: boolean;
 }

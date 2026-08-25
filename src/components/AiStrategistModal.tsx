@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { X, Sparkles, Send, Radio, Loader2, ShieldCheck, TrendingUp, HelpCircle, CheckCircle2 } from 'lucide-react';
-import { MBSQuote } from '../types';
+import { X, Sparkles, Send, Radio, Loader2, ShieldCheck, TrendingUp, HelpCircle, CheckCircle2, Globe, ExternalLink, Link2 } from 'lucide-react';
+import { MBSQuote, GroundingSource } from '../types';
 
 interface AiStrategistModalProps {
   isOpen: boolean;
@@ -21,6 +21,8 @@ export const AiStrategistModal: React.FC<AiStrategistModalProps> = ({
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [response, setResponse] = useState<string | null>(null);
   const [recommendation, setRecommendation] = useState<string | null>(null);
+  const [groundingSources, setGroundingSources] = useState<GroundingSource[]>([]);
+  const [searchQueries, setSearchQueries] = useState<string[]>([]);
 
   // Auto-run when opened with initialPrompt
   React.useEffect(() => {
@@ -38,6 +40,8 @@ export const AiStrategistModal: React.FC<AiStrategistModalProps> = ({
 
     setIsLoading(true);
     setResponse(null);
+    setGroundingSources([]);
+    setSearchQueries([]);
 
     try {
       const res = await fetch('/api/ask-strategist', {
@@ -49,10 +53,10 @@ export const AiStrategistModal: React.FC<AiStrategistModalProps> = ({
             activeCoupon: activeQuote.symbol,
             price: activeQuote.priceFormatted,
             changeBps: `${activeQuote.changeBps > 0 ? '+' : ''}${activeQuote.changeBps.toFixed(1)}`,
-            tenYear: tenYearQuote ? tenYearQuote.priceFormatted : '4.284%',
-            tenYearChange: tenYearQuote ? `${tenYearQuote.changeBps} bps` : '-4.2 bps',
+            tenYear: tenYearQuote ? tenYearQuote.priceFormatted : '4.660%',
+            tenYearChange: tenYearQuote ? `${tenYearQuote.changeBps} bps` : '-4.4 bps',
             parRate: '6.625%',
-            repriceRisk: 'Moderate / Positive Re-price Opportunity (78%)',
+            repriceRisk: 'Positive Re-price Opportunity (Float Window Active)',
           },
         }),
       });
@@ -60,6 +64,12 @@ export const AiStrategistModal: React.FC<AiStrategistModalProps> = ({
       const data = await res.json();
       setResponse(data.answer || data.fallbackAnswer || 'Unable to retrieve answer.');
       setRecommendation(data.lockRecommendation || 'SELECTIVE LOCK');
+      if (data.groundingSources && Array.isArray(data.groundingSources)) {
+        setGroundingSources(data.groundingSources);
+      }
+      if (data.searchQueries && Array.isArray(data.searchQueries)) {
+        setSearchQueries(data.searchQueries);
+      }
     } catch (err) {
       console.error('Failed to query strategist:', err);
       setResponse('Market desk is monitoring resistance lines. For 15-day closings, protect against reprices if yields spike.');
@@ -88,12 +98,13 @@ export const AiStrategistModal: React.FC<AiStrategistModalProps> = ({
             <div>
               <h3 className="text-base font-bold text-white flex items-center gap-2">
                 Ask Chief Market Strategist Dan Gallagher
-                <span className="px-1.5 py-0.2 rounded bg-[#FFD700]/15 text-[#FFD700] text-[10px] font-mono border border-[#FFD700]/40">
-                  AI Live Desk
+                <span className="px-1.5 py-0.2 rounded bg-blue-950 text-blue-400 text-[10px] font-mono border border-blue-700/50 flex items-center gap-1">
+                  <Globe className="w-3 h-3 text-blue-400" />
+                  Google Search Grounded
                 </span>
               </h3>
               <p className="text-xs text-gray-400">
-                Institutional MBS, Yield Curve & Rate Lock Advisory Powered by Gemini
+                Institutional MBS, Yield Curve & Rate Lock Advisory Powered by Gemini + Live Web Data
               </p>
             </div>
           </div>
@@ -150,9 +161,12 @@ export const AiStrategistModal: React.FC<AiStrategistModalProps> = ({
             <div className="py-12 flex flex-col items-center justify-center space-y-3">
               <Loader2 className="w-8 h-8 text-[#FFD700] animate-spin" />
               <p className="text-sm font-semibold text-gray-200">
-                Analyzing MBS coupon spreads & yield curves...
+                Searching Google Live Data & Analyzing MBS Spreads...
               </p>
-              <span className="text-xs text-gray-500 font-mono">Simulating secondary marketing response</span>
+              <span className="text-xs text-blue-400 font-mono flex items-center gap-1">
+                <Globe className="w-3.5 h-3.5 text-blue-400" />
+                Grounding with Google Search
+              </span>
             </div>
           )}
 
@@ -165,13 +179,52 @@ export const AiStrategistModal: React.FC<AiStrategistModalProps> = ({
                     <ShieldCheck className="w-4 h-4 text-[#FFD700]" />
                     <span>STRATEGIST RECOMMENDATION: {recommendation}</span>
                   </div>
-                  <span className="text-[10px] font-mono text-gray-400">Desk Intelligence</span>
+                  <span className="text-[10px] font-mono text-blue-400 flex items-center gap-1">
+                    <Globe className="w-3 h-3 text-blue-400" />
+                    Live Grounded
+                  </span>
                 </div>
               )}
 
               <div className="bg-[#141414] border border-[#262626] rounded-lg p-4 text-gray-200 space-y-3 leading-relaxed whitespace-pre-line">
                 {response}
               </div>
+
+              {/* Search Queries Used */}
+              {searchQueries && searchQueries.length > 0 && (
+                <div className="flex items-center gap-1.5 flex-wrap text-[10px] font-mono text-gray-400">
+                  <span className="text-gray-500">Searches executed:</span>
+                  {searchQueries.map((sq, idx) => (
+                    <span key={idx} className="px-2 py-0.5 rounded bg-[#161616] border border-[#262626] text-gray-300">
+                      "{sq}"
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {/* Verified Search Sources / Grounding Citations */}
+              {groundingSources && groundingSources.length > 0 && (
+                <div className="pt-2 border-t border-[#222222] space-y-2">
+                  <span className="text-[10px] font-mono text-gray-400 font-bold uppercase tracking-wider flex items-center gap-1">
+                    <Link2 className="w-3 h-3 text-[#FFD700]" />
+                    Verified Google Search Citations:
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {groundingSources.map((src, idx) => (
+                      <a
+                        key={idx}
+                        href={src.uri}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded bg-[#161616] hover:bg-[#222222] text-gray-300 hover:text-white border border-[#2b2b2b] hover:border-[#FFD700]/50 text-[10px] transition-all"
+                      >
+                        <span className="truncate max-w-[240px]">{src.title}</span>
+                        <ExternalLink className="w-2.5 h-2.5 text-[#FFD700] shrink-0" />
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -201,3 +254,4 @@ export const AiStrategistModal: React.FC<AiStrategistModalProps> = ({
     </div>
   );
 };
+

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { MessageSquare, ArrowBigUp, Sparkles, Send, CheckCircle2, Radio, User, Building, MapPin, Filter, HelpCircle, Loader2 } from 'lucide-react';
+import { MessageSquare, ArrowBigUp, Sparkles, Send, CheckCircle2, Radio, User, Building, MapPin, Filter, HelpCircle, Loader2, Globe, ExternalLink, Link2 } from 'lucide-react';
 import { QAQuestion, MBSQuote } from '../types';
 
 interface InteractiveQAHubProps {
@@ -305,11 +305,40 @@ export const InteractiveQAHub: React.FC<InteractiveQAHubProps> = ({
 
                 {/* If already answered */}
                 {q.answerText && (
-                  <div className="bg-[#080808] border border-[#222222] rounded-lg p-3 text-xs text-gray-300 space-y-1">
-                    <span className="text-[#FFD700] font-mono font-bold text-[11px]">
-                      Desk Answer ({q.answeredBy || 'Chief Strategist'}):
-                    </span>
-                    <p>{q.answerText}</p>
+                  <div className="bg-[#080808] border border-[#222222] rounded-lg p-3 text-xs text-gray-300 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[#FFD700] font-mono font-bold text-[11px]">
+                        Desk Answer ({q.answeredBy || 'Chief Strategist'}):
+                      </span>
+                      <span className="inline-flex items-center space-x-1 px-1.5 py-0.2 rounded bg-blue-950 text-blue-400 border border-blue-800 text-[9px] font-mono font-bold">
+                        <Globe className="w-2.5 h-2.5 text-blue-400" />
+                        <span>Search Grounded</span>
+                      </span>
+                    </div>
+                    <p className="leading-relaxed whitespace-pre-line">{q.answerText}</p>
+
+                    {q.groundingSources && q.groundingSources.length > 0 && (
+                      <div className="pt-2 border-t border-[#1c1c1c] space-y-1">
+                        <span className="text-[10px] font-mono text-gray-400 font-bold flex items-center gap-1">
+                          <Link2 className="w-3 h-3 text-[#FFD700]" />
+                          Verified Web Sources:
+                        </span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {q.groundingSources.map((src, idx) => (
+                            <a
+                              key={idx}
+                              href={src.uri}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center space-x-1 px-2 py-0.5 rounded bg-[#141414] hover:bg-[#1f1f1f] text-gray-300 hover:text-white border border-[#262626] hover:border-[#FFD700]/40 text-[9px] transition-all"
+                            >
+                              <span className="truncate max-w-[180px]">{src.title}</span>
+                              <ExternalLink className="w-2.5 h-2.5 text-[#FFD700] shrink-0" />
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 

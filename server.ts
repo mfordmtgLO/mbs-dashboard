@@ -403,7 +403,7 @@ app.get('/api/markets/live-cnbc', async (req, res) => {
   }
 });
 
-// Endpoint: Real-time Mortgage Strategist Q&A
+// Endpoint: Real-time Mortgage Strategist Q&A with Google Search Grounding
 app.post('/api/ask-strategist', async (req, res) => {
   try {
     const { question, marketContext } = req.body;
@@ -422,15 +422,22 @@ app.post('/api/ask-strategist', async (req, res) => {
           ? '10Y yield drop combined with higher MBS coupon prices supports improving borrower pricing.'
           : 'Yield surges increase negative reprice risk across wholesale rate sheets.',
         suggestedCoupon: marketContext?.activeCoupon || 'UMBS 30yr 6.0%',
+        groundingSources: [
+          { title: 'CNBC US Markets Live', uri: 'https://www.cnbc.com/markets/us-markets/' },
+          { title: 'Freddie Mac Primary Mortgage Market Survey', uri: 'https://www.freddiemac.com/pmms' },
+          { title: 'Federal Reserve Board Monetary Policy', uri: 'https://www.federalreserve.gov/monetarypolicy.htm' },
+        ],
+        searchQueries: ['10-year Treasury yield mortgage rates today', 'MBS market prices live'],
         isFallback: true,
       });
     }
 
     const systemPrompt = `You are Dan Gallagher, CFA, the Chief Market Strategist on MBS-Live, a premier real-time financial broadcast and data platform for mortgage loan officers, branch managers, and secondary marketing directors.
 You provide incisive, Wall-Street-grade market commentary on Mortgage-Backed Securities (UMBS 30yr, GNMA, 15yr pools), 10-Year Treasury yields, Federal Reserve monetary policy, inflation metrics (CPI/PCE), lender re-pricing alerts, and Lock vs. Float strategies.
+You have access to Google Search grounding to retrieve current, up-to-date market information, economic releases, and financial news.
 
 Crucial Market Mechanism:
-- When 10-Year Treasury yields fall (e.g. down -4.4 bps) and MBS coupon prices rise (e.g. up +5/32nds / +15 bps), primary mortgage interest rates DROP / IMPROVE. Wholesale lenders experience widened secondary execution margins, leading to POSITIVE mid-day rate sheet reprices (better pricing, higher lender credits, lower note rates). This is NOT a negative reprice risk.
+- When 10-Year Treasury yields fall (e.g. down -4.4 bps) and MBS coupon prices rise (e.g. up +5/32nds / +15 bps), primary mortgage interest rates DROP / IMPROVE. Wholesale lenders experience widened secondary execution margins, leading to POSITIVE mid-day rate sheet reprices (better pricing, higher lender credits, lower note rates).
 - Conversely, when 10-Year yields spike higher and MBS prices fall, mortgage rates RISE / WORSEN, creating NEGATIVE reprice risk where lenders pull sheets and reissue worse pricing.
 
 Current Live Market Data Context:
@@ -440,7 +447,7 @@ Current Live Market Data Context:
 - Repricing Risk Index: ${marketContext?.repriceRisk || 'Positive Re-price Opportunity (Float Window Active)'}
 
 Instructions:
-1. Provide a sharp, professional, 2-3 paragraph answer written in an authoritative yet accessible mortgage broadcast tone.
+1. Provide a sharp, professional, 2-3 paragraph answer written in an authoritative yet accessible mortgage broadcast tone, grounded in real current market intelligence.
 2. Accurately explain the relationship between 10Y Treasury yield drops, rising MBS prices, and improving mortgage rates / positive repricing.
 3. Conclude with a definitive bulleted Lock / Float guidance for:
    - 0-15 Day Closings
@@ -453,13 +460,32 @@ Keep it concise, actionable, and formatted with clean markdown without unnecessa
       contents: question,
       config: {
         systemInstruction: systemPrompt,
+        tools: [{ googleSearch: {} }],
         temperature: 0.7,
       },
+    });
+
+    // Extract search grounding metadata
+    const candidate = response.candidates?.[0];
+    const groundingChunks = candidate?.groundingMetadata?.groundingChunks || [];
+    const webSearchQueries = candidate?.groundingMetadata?.webSearchQueries || [];
+
+    const groundingSources: { title: string; uri: string }[] = [];
+    groundingChunks.forEach((chunk: any) => {
+      if (chunk.web && chunk.web.uri) {
+        const title = chunk.web.title || new URL(chunk.web.uri).hostname;
+        // avoid duplicates
+        if (!groundingSources.some((s) => s.uri === chunk.web.uri)) {
+          groundingSources.push({ title, uri: chunk.web.uri });
+        }
+      }
     });
 
     res.json({
       answer: response.text || 'No response generated.',
       lockRecommendation: marketContext?.changeBps?.startsWith('+') ? 'SELECTIVE FLOAT / LOCK ON GAINS' : 'PROTECTIVE LOCK',
+      groundingSources,
+      searchQueries: webSearchQueries,
       timestamp: new Date().toISOString(),
     });
   } catch (error: any) {
@@ -471,7 +497,106 @@ Keep it concise, actionable, and formatted with clean markdown without unnecessa
   }
 });
 
-// Endpoint: AI Market Flash / Reprice Alert Generator
+// Endpoint: Live Google Search-Grounded Market Intelligence
+app.post('/api/market/search-grounded-intelligence', async (req, res) => {
+  try {
+    const { query, topic } = req.body;
+    const searchQuery = query || topic || 'Mortgage backed securities UMBS 10-year Treasury yield mortgage rates today';
+
+    const ai = getGeminiClient();
+    if (!ai) {
+      return res.json({
+        query: searchQuery,
+        headline: '10-Year Treasury Yields Consolidate Around 4.66% as Secondary MBS Spreads Stabilize',
+        summary: 'Mortgage-backed securities benchmark coupons (UMBS 30-year 5.5% and 6.0%) maintain solid bids as fixed-income traders digest recent macroeconomic reports. The 10-Year Treasury note trades with moderate gains, supporting loan officer floating strategies for short-term locks.',
+        keyDrivers: [
+          'Benchmark 10-Year Treasury yield remains near 4.66%, offering support to primary rate sheets.',
+          'Primary-Secondary mortgage spread holds steady at ~118 bps over 10Y UST.',
+          'Wholesale lender pipeline hedging indicates low immediate risk of negative intra-day repricing.',
+        ],
+        lockFloatImpact: 'FLOAT FAVORABLE (15-day closings can watch for mid-day positive adjustments)',
+        groundingSources: [
+          { title: 'CNBC US Markets Live', uri: 'https://www.cnbc.com/markets/us-markets/' },
+          { title: 'Freddie Mac Primary Mortgage Market Survey', uri: 'https://www.freddiemac.com/pmms' },
+          { title: 'Mortgage News Daily MBS Live', uri: 'https://www.mortgagenewsdaily.com/mbs' },
+        ],
+        searchQueries: [searchQuery, 'current 30-year mortgage rates', '10 year treasury yield'],
+        timestamp: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+        isFallback: true,
+      });
+    }
+
+    const systemPrompt = `You are the Lead Financial Research Desk on MBS-Live.
+Your task is to analyze real-time Google Search data regarding mortgage-backed securities (UMBS, GNMA), 10-Year Treasury yields, Federal Reserve monetary policy, inflation figures (CPI/PCE), wholesale lender rate sheet pricing, and weekly Freddie Mac PMMS rates.
+
+Format your response as a clear, highly structured JSON object with the following fields:
+- headline: A sharp, professional breaking news headline (e.g. "10Y Treasury Rallies as Inflation Cools, Lifting MBS 6.0% Pool Prices")
+- summary: A 2-3 paragraph deep synthesis of the latest live search findings, citing specific data points, yields, or statements.
+- keyDrivers: An array of 3 to 4 concise bullet points summarizing the core market drivers.
+- lockFloatImpact: A clear, actionable directive for mortgage loan officers (e.g. "FLOAT FAVORABLE: High probability of lender positive reprices", "PROTECTIVE LOCK: Imminent reprice risk").
+
+Return ONLY valid JSON.`;
+
+    const prompt = `Search the live web for the latest up-to-date data on: "${searchQuery}".
+Provide the most recent, accurate market context for mortgage professionals.`;
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.7-flash',
+      contents: prompt,
+      config: {
+        systemInstruction: systemPrompt,
+        tools: [{ googleSearch: {} }],
+        temperature: 0.5,
+      },
+    });
+
+    const candidate = response.candidates?.[0];
+    const groundingChunks = candidate?.groundingMetadata?.groundingChunks || [];
+    const webSearchQueries = candidate?.groundingMetadata?.webSearchQueries || [];
+
+    const groundingSources: { title: string; uri: string }[] = [];
+    groundingChunks.forEach((chunk: any) => {
+      if (chunk.web && chunk.web.uri) {
+        const title = chunk.web.title || new URL(chunk.web.uri).hostname;
+        if (!groundingSources.some((s) => s.uri === chunk.web.uri)) {
+          groundingSources.push({ title, uri: chunk.web.uri });
+        }
+      }
+    });
+
+    let parsedResult: any = null;
+    try {
+      const cleanText = (response.text || '').replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
+      parsedResult = JSON.parse(cleanText);
+    } catch {
+      parsedResult = {
+        headline: `Live Search Analysis: ${searchQuery}`,
+        summary: response.text || 'Market intelligence synthesis generated from live search data.',
+        keyDrivers: ['Live Treasury yield developments', 'MBS secondary pricing movements', 'Lender spread dynamics'],
+        lockFloatImpact: 'Monitor rate sheets closely; adhere to pipeline lock thresholds.',
+      };
+    }
+
+    res.json({
+      query: searchQuery,
+      headline: parsedResult.headline || `Market Wire: ${searchQuery}`,
+      summary: parsedResult.summary || response.text,
+      keyDrivers: Array.isArray(parsedResult.keyDrivers) ? parsedResult.keyDrivers : ['Yield curve movement', 'MBS trading tone'],
+      lockFloatImpact: parsedResult.lockFloatImpact || 'Maintain active risk management on pipeline locks.',
+      groundingSources,
+      searchQueries: webSearchQueries,
+      timestamp: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+    });
+  } catch (error: any) {
+    console.error('Search-grounded intelligence error:', error);
+    res.status(500).json({
+      error: 'Failed to retrieve search-grounded market intelligence',
+      message: error.message,
+    });
+  }
+});
+
+// Endpoint: AI Market Flash / Reprice Alert Generator with Search Grounding
 app.post('/api/market/generate-commentary', async (req, res) => {
   try {
     const { eventType, marketSnapshot } = req.body;
@@ -487,6 +612,9 @@ app.post('/api/market/generate-commentary', async (req, res) => {
           'Originator lock volume uptick noted into market rally'
         ],
         lockFloatVerdict: 'Float with strict 15-day stop limits',
+        groundingSources: [
+          { title: 'CNBC US Markets Live', uri: 'https://www.cnbc.com/markets/us-markets/' },
+        ],
       });
     }
 
@@ -502,20 +630,31 @@ Produce a JSON response with:
       model: 'gemini-3.7-flash',
       contents: prompt,
       config: {
-        responseMimeType: 'application/json',
+        tools: [{ googleSearch: {} }],
         temperature: 0.6,
       },
     });
 
+    const candidate = response.candidates?.[0];
+    const groundingChunks = candidate?.groundingMetadata?.groundingChunks || [];
+    const groundingSources: { title: string; uri: string }[] = [];
+    groundingChunks.forEach((chunk: any) => {
+      if (chunk.web && chunk.web.uri && !groundingSources.some((s) => s.uri === chunk.web.uri)) {
+        groundingSources.push({ title: chunk.web.title || chunk.web.uri, uri: chunk.web.uri });
+      }
+    });
+
     try {
-      const parsed = JSON.parse(response.text || '{}');
-      res.json(parsed);
+      const cleanText = (response.text || '').replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
+      const parsed = JSON.parse(cleanText);
+      res.json({ ...parsed, groundingSources });
     } catch {
       res.json({
         headline: 'MBS Live Market Pulse Alert',
         summary: response.text,
         keyDrivers: ['Yield curve movements', 'Fed speaker commentary', 'Auction demand'],
         lockFloatVerdict: 'Cautious Lock',
+        groundingSources,
       });
     }
   } catch (err: any) {

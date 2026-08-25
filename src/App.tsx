@@ -564,6 +564,7 @@ export default function App() {
 
       const data = await res.json();
       const answer = data.answer || data.fallbackAnswer;
+      const groundingSources = data.groundingSources || [];
 
       setQuestions((prev) =>
         prev.map((q) =>
@@ -573,6 +574,7 @@ export default function App() {
                 status: 'answered',
                 answerText: answer,
                 answeredBy: 'Dan Gallagher, CFA (AI Desk)',
+                groundingSources,
               }
             : q
         )
