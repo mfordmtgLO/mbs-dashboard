@@ -105,8 +105,12 @@ export default function App() {
   ]);
   const [isVolatilityDrawerOpen, setIsVolatilityDrawerOpen] = useState<boolean>(false);
 
-  // Store base anchor 10Y yield for mean-reverting random walk
+  // Store base anchor 10Y yield and open baseline for smooth, authentic pricing
   const baseY10Ref = useRef<number>(4.660);
+  const dailyOpenYieldRef = useRef<number>(4.704);
+  const target10YRef = useRef<number>(4.660);
+  const isBreachedRef = useRef<boolean>(false);
+  const lastAlertTimestampRef = useRef<number>(0);
   const lastAlertTimeRef = useRef<{ [key: string]: number }>({});
 
   // Active selected quote
@@ -119,7 +123,8 @@ export default function App() {
     direction: 'SPIKE_UP' | 'DROP_DOWN',
     customDelta?: number,
     overrideYield?: number,
-    overrideSession?: TradingSessionType
+    overrideSession?: TradingSessionType,
+    isManualTest: boolean = false
   ) => {
     const session = overrideSession || currentSession;
     const baseline = session === 'LIVE_DAILY' ? dailyBaseline10Y : afterHoursBaseline10Y;
@@ -186,17 +191,17 @@ export default function App() {
       isRead: false,
     };
 
-    // Play Audio Chime
+    // Play Audio Chime with soft volume & throttling
     if (soundEnabled) {
       if (isSpike) {
-        playRedVolatilityChime();
+        playRedVolatilityChime(isManualTest);
       } else {
-        playGreenVolatilityChime();
+        playGreenVolatilityChime(isManualTest);
       }
     }
 
     // Add to Active Floating Toasts
-    setActiveToasts((prev) => [newAlert, ...prev.slice(0, 3)]);
+    setActiveToasts((prev) => [newAlert, ...prev.slice(0, 2)]);
 
     // Add to History Log
     setVolatilityAlertsHistory((prev) => [newAlert, ...prev]);
@@ -228,11 +233,11 @@ export default function App() {
       currentSession === 'LIVE_DAILY' ? 'AFTER_HOURS' : 'LIVE_DAILY';
     setCurrentSession(nextSession);
 
-    const active10Y = treasuryCurve.y10 ?? 4.284;
+    const active10Y = treasuryCurve.y10 ?? 4.660;
     if (nextSession === 'AFTER_HOURS') {
       setAfterHoursBaseline10Y(active10Y);
     } else {
-      setDailyBaseline10Y(active10Y);
+      setDailyBaseline10Y(dailyOpenYieldRef.current);
     }
   };
 
@@ -252,9 +257,7 @@ export default function App() {
           setTreasuryCurve(data.treasuryCurve);
           if (data.treasuryCurve.y10) {
             baseY10Ref.current = data.treasuryCurve.y10;
-            if (currentSession === 'LIVE_DAILY') {
-              setDailyBaseline10Y(data.treasuryCurve.y10);
-            }
+            target10YRef.current = data.treasuryCurve.y10;
           }
         }
 
@@ -271,6 +274,7 @@ export default function App() {
         const live10YChgBps = data.us10yQuote?.changeBps ?? -4.4;
         const rawOpen10Y = parseFloat(String(data.us10yQuote?.open || '').replace('%', '')) || +(live10Y - live10YChgBps / 100).toFixed(3);
         const open10Y = +rawOpen10Y.toFixed(3);
+        dailyOpenYieldRef.current = open10Y;
 
         if (currentSession === 'LIVE_DAILY') {
           setDailyBaseline10Y(open10Y);
@@ -302,7 +306,7 @@ export default function App() {
             const duration = quote.duration || 3.5;
             const histOas = quote.histOas || 20;
 
-            // Mathematically derive both morning open price and current live price
+            // Mathematically derive both morning open price and current live price relative to day's open baseline
             const openPrice = deriveMbsPrice(quote.couponRate, duration, open10Y, histOas);
             const derivedPrice = deriveMbsPrice(quote.couponRate, duration, live10Y, histOas);
             const priceChangeDec = derivedPrice - openPrice;
@@ -334,80 +338,91 @@ export default function App() {
     }
   };
 
-  // Initial load and periodic 20-second live sync from CNBC
+  // Initial load and periodic 25-second live sync from CNBC
   useEffect(() => {
     fetchLiveCnbcMarkets();
     const cnbcInterval = setInterval(() => {
       fetchLiveCnbcMarkets();
-    }, 20000);
+    }, 25000);
     return () => clearInterval(cnbcInterval);
   }, []);
 
-  // Institutional Market Tick Simulation Engine
-  // Models 10Y Benchmark UST yield fluctuations and derives Agency MBS prices through duration + OAS math
-  // Real-time checks whether 10Y yields move up/down > 3bps relative to session baseline
+  // Institutional Market Tick Simulation Engine with Delay & Exponential Smoothing (EMA)
+  // Replaces jittery 2s updates with a realistic, smoothed 7.0-second delay cadence
   useEffect(() => {
     if (!isSimulatingTicks) return;
 
     const tickInterval = setInterval(() => {
-      // 1. Viewer count random walk
-      setViewerCount((prev) => Math.max(1200, prev + Math.floor(Math.random() * 7 - 3)));
+      // 1. Viewer count gradual drift
+      setViewerCount((prev) => Math.max(1200, prev + Math.floor(Math.random() * 5 - 2)));
 
-      // 2. 10Y Benchmark Treasury Yield Tick
+      // 2. Smoothed 10Y Benchmark Treasury Yield Tick
       const current10Y = treasuryCurve.y10 ?? 4.660;
-      const noise = (Math.random() - 0.49) * 0.004;
-      const pull = (baseY10Ref.current - current10Y) * 0.04;
-      const new10Y = +(current10Y + noise + pull).toFixed(3);
-      const delta10YBps = +((new10Y - current10Y) * 100).toFixed(1);
+      
+      // Micro-walk target with mean-reversion towards base anchor
+      const noise = (Math.random() - 0.49) * 0.002;
+      const pull = (baseY10Ref.current - target10YRef.current) * 0.05;
+      target10YRef.current = +(target10YRef.current + noise + pull).toFixed(4);
 
-      // Check Volatility Alert threshold relative to session baseline
+      // Smooth current yield towards target via Exponential Moving Average (EMA factor alpha = 0.25)
+      const smoothed10Y = +(current10Y + 0.25 * (target10YRef.current - current10Y)).toFixed(3);
+      const delta10YBps = +((smoothed10Y - current10Y) * 100).toFixed(1);
+
+      // Day change relative to morning open baseline (4.704%)
+      const dayShiftBps = +((smoothed10Y - dailyOpenYieldRef.current) * 100).toFixed(1);
+
+      // Session shift relative to active session baseline (for volatility alert thresholding)
       const activeBaseline = currentSession === 'LIVE_DAILY' ? dailyBaseline10Y : afterHoursBaseline10Y;
-      const sessionShiftBps = +((new10Y - activeBaseline) * 100).toFixed(1);
+      const sessionShiftBps = +((smoothed10Y - activeBaseline) * 100).toFixed(1);
       const nowMs = Date.now();
 
-      if (sessionShiftBps >= thresholdBps) {
-        const lastSpike = lastAlertTimeRef.current[`SPIKE_${currentSession}`] || 0;
-        if (nowMs - lastSpike > 45000) {
-          lastAlertTimeRef.current[`SPIKE_${currentSession}`] = nowMs;
-          triggerVolatilityAlert('SPIKE_UP', sessionShiftBps, new10Y, currentSession);
-        }
-      } else if (sessionShiftBps <= -thresholdBps) {
-        const lastDrop = lastAlertTimeRef.current[`DROP_${currentSession}`] || 0;
-        if (nowMs - lastDrop > 45000) {
-          lastAlertTimeRef.current[`DROP_${currentSession}`] = nowMs;
-          triggerVolatilityAlert('DROP_DOWN', sessionShiftBps, new10Y, currentSession);
+      // Stateful Hysteresis Alert Check: Triggers only when crossing into alert zone, with 3-minute cooldown
+      const isBreaching = Math.abs(sessionShiftBps) >= thresholdBps;
+      const isInSafeZone = Math.abs(sessionShiftBps) < (thresholdBps - 0.8);
+
+      if (isInSafeZone) {
+        isBreachedRef.current = false;
+      }
+
+      if (isBreaching && !isBreachedRef.current && (nowMs - lastAlertTimestampRef.current > 180000)) {
+        isBreachedRef.current = true;
+        lastAlertTimestampRef.current = nowMs;
+        if (sessionShiftBps >= thresholdBps) {
+          triggerVolatilityAlert('SPIKE_UP', sessionShiftBps, smoothed10Y, currentSession, false);
+        } else {
+          triggerVolatilityAlert('DROP_DOWN', sessionShiftBps, smoothed10Y, currentSession, false);
         }
       }
 
-      // Fluctuate other points on curve slightly
+      // Fluctuate other points on curve with gentle, dampened drift
       setTreasuryCurve((prev) => {
-        const y2 = prev.y2 ? +(prev.y2 + (Math.random() - 0.5) * 0.002).toFixed(3) : 4.208;
-        const y5 = prev.y5 ? +(prev.y5 + (Math.random() - 0.5) * 0.003).toFixed(3) : 4.367;
-        const y30 = prev.y30 ? +(prev.y30 + (Math.random() - 0.5) * 0.002).toFixed(3) : 5.191;
+        const y2 = prev.y2 ? +(prev.y2 + (Math.random() - 0.5) * 0.001).toFixed(3) : 4.208;
+        const y5 = prev.y5 ? +(prev.y5 + (Math.random() - 0.5) * 0.0015).toFixed(3) : 4.367;
+        const y30 = prev.y30 ? +(prev.y30 + (Math.random() - 0.5) * 0.001).toFixed(3) : 5.191;
         return {
           ...prev,
           y2,
           y5,
-          y10: new10Y,
+          y10: smoothed10Y,
           y30,
-          curve2y10y: +(new10Y - y2).toFixed(3),
+          curve2y10y: +(smoothed10Y - y2).toFixed(3),
         };
       });
 
-      // 3. Update all Agency MBS Quotes using deriveMbsPrice math
+      // 3. Update all Agency MBS Quotes using deriveMbsPrice math relative to authentic day open
       setQuotes((prevQuotes) =>
         prevQuotes.map((quote) => {
           // Special handling for 10Y Treasury quote
           if (quote.category === 'TREASURY') {
             return {
               ...quote,
-              price: new10Y,
-              priceFormatted: `${new10Y.toFixed(3)}%`,
-              yieldRate: new10Y,
-              yieldChange: sessionShiftBps,
-              changeBps: sessionShiftBps,
+              price: smoothed10Y,
+              priceFormatted: `${smoothed10Y.toFixed(3)}%`,
+              yieldRate: smoothed10Y,
+              yieldChange: dayShiftBps,
+              changeBps: dayShiftBps,
               lastUpdated: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-              sparkline: [...quote.sparkline.slice(1), new10Y],
+              sparkline: [...quote.sparkline.slice(1), smoothed10Y],
             };
           }
 
@@ -419,13 +434,13 @@ export default function App() {
           const duration = quote.duration || 3.5;
           const histOas = quote.histOas || 20;
 
-          // Mathematically derive price shift relative to baseline open yield
-          const openPrice = deriveMbsPrice(quote.couponRate, duration, activeBaseline, histOas);
-          const derivedPrice = deriveMbsPrice(quote.couponRate, duration, new10Y, histOas);
+          // Mathematically derive price shift relative to true morning open baseline
+          const openPrice = deriveMbsPrice(quote.couponRate, duration, dailyOpenYieldRef.current, histOas);
+          const derivedPrice = deriveMbsPrice(quote.couponRate, duration, smoothed10Y, histOas);
           const priceChangeDec = derivedPrice - openPrice;
           const change32nds = Math.round(priceChangeDec * 32);
           const changeBps = +(priceChangeDec * 100).toFixed(1);
-          const mbsYield = +(new10Y + histOas / 100).toFixed(3);
+          const mbsYield = +(smoothed10Y + histOas / 100).toFixed(3);
 
           const updatedSpark = quote.sparkline ? [...quote.sparkline.slice(1), +derivedPrice.toFixed(3)] : [derivedPrice];
 
@@ -436,19 +451,19 @@ export default function App() {
             change32nds,
             changeBps,
             yieldRate: mbsYield,
-            yieldChange: sessionShiftBps,
+            yieldChange: dayShiftBps,
             lastUpdated: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
             sparkline: updatedSpark,
           };
         })
       );
 
-      // 4. Update Intraday chart dataset
+      // 4. Update Intraday chart dataset with smooth, realistic delta
       setIntradayData((prevData) => {
         if (prevData.length === 0) return prevData;
         const last = prevData[prevData.length - 1];
-        // Bond price goes up when 10Y yield goes down
-        const priceDelta = -(delta10YBps / 100) * 0.035 + (Math.random() - 0.5) * 0.01;
+        // Bond price shifts smoothly inverse to yield delta
+        const priceDelta = -(delta10YBps / 100) * 0.03 + (Math.random() - 0.5) * 0.004;
         const newClose = +(last.close + priceDelta).toFixed(4);
         const updatedLast = {
           ...last,
@@ -459,10 +474,11 @@ export default function App() {
         };
         return [...prevData.slice(0, -1), updatedLast];
       });
-    }, 3200);
+    }, 7000); // 7.0 second realistic delay & smoothing interval
 
     return () => clearInterval(tickInterval);
   }, [isSimulatingTicks, treasuryCurve.y10, currentSession, dailyBaseline10Y, afterHoursBaseline10Y, thresholdBps]);
+
 
   // Handle Toast Action Clicks
   const handleToastAction = (alert: VolatilityAlert, action: 'chart' | 'calculator' | 'lock') => {
@@ -620,11 +636,11 @@ export default function App() {
         <VolatilityControlBar
           currentSession={currentSession}
           onToggleSession={handleToggleSession}
-          current10YYield={treasuryCurve.y10 ?? 4.284}
+          current10YYield={treasuryCurve.y10 ?? 4.660}
           dailyBaseline10Y={dailyBaseline10Y}
           afterHoursBaseline10Y={afterHoursBaseline10Y}
           thresholdBps={thresholdBps}
-          onTriggerTestAlert={triggerVolatilityAlert}
+          onTriggerTestAlert={(dir, customDelta) => triggerVolatilityAlert(dir, customDelta, undefined, undefined, true)}
           onOpenDrawer={() => setIsVolatilityDrawerOpen(true)}
           alertCount={volatilityAlertsHistory.length}
           soundEnabled={soundEnabled}

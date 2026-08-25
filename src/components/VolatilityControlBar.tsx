@@ -89,10 +89,17 @@ export const VolatilityControlBar: React.FC<VolatilityControlBarProps> = ({
           </span>
         </div>
 
-        {/* Rule explanation badge */}
-        <div className="hidden lg:flex items-center space-x-1 text-[11px] text-gray-400">
-          <ShieldAlert className="w-3.5 h-3.5 text-[#FFD700]" />
-          <span>Rule: Red alert on &gt;+3.0 bps | Green alert on &lt;-3.0 bps</span>
+        {/* Rule explanation badge & Smoothed Delay Indicator */}
+        <div className="hidden xl:flex items-center space-x-2 text-[11px] text-gray-400">
+          <div className="flex items-center space-x-1">
+            <ShieldAlert className="w-3.5 h-3.5 text-[#FFD700]" />
+            <span>Threshold: ±{thresholdBps.toFixed(1)} bps</span>
+          </div>
+          <span className="text-gray-600">•</span>
+          <div className="flex items-center space-x-1 px-1.5 py-0.5 rounded bg-[#161616] border border-[#2a2a2a] text-[10px] text-emerald-400">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            <span>Pacing: 7s Delayed Smoothing (Stable EMA)</span>
+          </div>
         </div>
       </div>
 
