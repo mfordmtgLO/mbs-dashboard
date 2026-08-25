@@ -2,5 +2,7 @@
   "name": "MBS-Live",
   "description": "Real-time mortgage-backed securities live streaming platform featuring live market feeds, expert commentary, technical tick charts, and interactive Q&A for mortgage professionals.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }
