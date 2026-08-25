@@ -43,31 +43,23 @@ export const MbsTickerBoard: React.FC<MbsTickerBoardProps> = ({
   const isLoKeyQuote = (q: MBSQuote) => {
     return (
       q.id === 'us-10y-treasury' ||
-      q.id === 'fnma55' ||
-      q.id === 'fnma60' ||
-      q.id === 'fnma65' ||
-      q.id === 'gnma55' ||
-      q.id === 'gnma60' ||
-      q.id === 'gnma65' ||
-      q.symbol.includes('5.5%') ||
-      q.symbol.includes('6.0%') ||
-      q.symbol.includes('6.5%') ||
-      q.symbol.includes('10Y')
+      q.id === 'mbs-primary-spread' ||
+      q.category === 'TREASURY' ||
+      q.category === 'SPREAD' ||
+      q.couponRate === 5.0 ||
+      q.couponRate === 5.5 ||
+      q.couponRate === 6.0 ||
+      q.couponRate === 6.5 ||
+      q.couponRate === 7.0 ||
+      q.symbol.includes('10Y') ||
+      q.symbol.includes('SPREAD')
     );
   };
 
   const filteredQuotes = quotes.filter((q) => {
     // Agency / LO Key Filter
     if (filterAgency === 'LO_KEY') {
-      const isKey =
-        q.id === 'us-10y-treasury' ||
-        q.id === 'fnma55' ||
-        q.id === 'fnma60' ||
-        q.id === 'fnma65' ||
-        q.id === 'gnma55' ||
-        q.id === 'gnma60' ||
-        q.id === 'gnma65';
-      if (!isKey) return false;
+      if (!isLoKeyQuote(q)) return false;
     }
     if (filterAgency === 'FNMA' && q.agency !== 'FNMA') return false;
     if (filterAgency === 'FHLMC' && q.agency !== 'FHLMC') return false;

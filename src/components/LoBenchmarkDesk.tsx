@@ -21,9 +21,11 @@ import {
   AlertTriangle,
   Flame,
   Info,
+  Gauge,
 } from 'lucide-react';
 import { MBSQuote, TreasuryCurveData } from '../types';
 import { computeLoanDollarImpact, decimalTo32nds, analyze10yAndMbsRepriceOutlook } from '../utils/mbsCalculations';
+import { getFocusRegimeByYield, MBS_FOCUS_REGIMES, MbsFocusRegime } from '../utils/mbsFocusEngine';
 
 interface LoBenchmarkDeskProps {
   quotes: MBSQuote[];
@@ -44,6 +46,7 @@ export const LoBenchmarkDesk: React.FC<LoBenchmarkDeskProps> = ({
   const [customLoanInput, setCustomLoanInput] = useState<string>('500,000');
   const [pipelineCount, setPipelineCount] = useState<number>(1);
   const [displayMode, setDisplayMode] = useState<'32nds' | 'decimal'>('32nds');
+  const [overrideRegimeId, setOverrideRegimeId] = useState<string | null>(null);
 
   // Key Trading Instruments
   const tenYearUst = quotes.find((q) => q.id === 'us-10y-treasury') || {
@@ -63,20 +66,34 @@ export const LoBenchmarkDesk: React.FC<LoBenchmarkDeskProps> = ({
     category: 'TREASURY' as const,
   };
 
-  // Conventional Fannie Mae 30Y Coupons: 5.5, 6.0, 6.5
-  const fnma55 = quotes.find((q) => q.id === 'fnma55' || q.symbol === 'FNMA 30Y 5.5%');
-  const fnma60 = quotes.find((q) => q.id === 'fnma60' || q.symbol === 'FNMA 30Y 6.0%');
-  const fnma65 = quotes.find((q) => q.id === 'fnma65' || q.symbol === 'FNMA 30Y 6.5%');
-
-  // Government Ginnie Mae II 30Y Coupons: 5.5, 6.0, 6.5
-  const gnma55 = quotes.find((q) => q.id === 'gnma55' || q.symbol === 'GNMA II 30Y 5.5%');
-  const gnma60 = quotes.find((q) => q.id === 'gnma60' || q.symbol === 'GNMA II 30Y 6.0%');
-  const gnma65 = quotes.find((q) => q.id === 'gnma65' || q.symbol === 'GNMA II 30Y 6.5%');
-
   const current10Y = treasuryCurve.y10 ?? tenYearUst.yieldRate ?? 4.660;
   const is10YDown = (tenYearUst.changeBps || 0) <= 0; // yields dropping is GREEN for MBS / loan pricing
 
-  // Core benchmark MBS coupon for composite reprice calculation (FNMA 6.0% or 5.5%)
+  // Dynamic Regime Calculation (similar to Barry Habib / MBS Highway focus shifts)
+  const activeRegime: MbsFocusRegime = overrideRegimeId
+    ? MBS_FOCUS_REGIMES[overrideRegimeId] || MBS_FOCUS_REGIMES.NORMAL_CURRENT
+    : getFocusRegimeByYield(current10Y);
+
+  // Dynamic Conventional Fannie Mae 30Y Coupons matching active regime
+  const fnmaLow = quotes.find((q) => q.agency === 'FNMA' && (q.couponRate === activeRegime.lowKeyCoupon || q.symbol.includes(`${activeRegime.lowKeyCoupon}%`)));
+  const fnmaCore = quotes.find((q) => q.agency === 'FNMA' && (q.couponRate === activeRegime.coreKeyCoupon || q.symbol.includes(`${activeRegime.coreKeyCoupon}%`)));
+  const fnmaUpper = quotes.find((q) => q.agency === 'FNMA' && (q.couponRate === activeRegime.upperKeyCoupon || q.symbol.includes(`${activeRegime.upperKeyCoupon}%`)));
+
+  // Dynamic Government Ginnie Mae II 30Y Coupons matching active regime
+  const gnmaLow = quotes.find((q) => q.agency === 'GNMA' && (q.couponRate === activeRegime.lowKeyCoupon || q.symbol.includes(`${activeRegime.lowKeyCoupon}%`)));
+  const gnmaCore = quotes.find((q) => q.agency === 'GNMA' && (q.couponRate === activeRegime.coreKeyCoupon || q.symbol.includes(`${activeRegime.coreKeyCoupon}%`)));
+  const gnmaUpper = quotes.find((q) => q.agency === 'GNMA' && (q.couponRate === activeRegime.upperKeyCoupon || q.symbol.includes(`${activeRegime.upperKeyCoupon}%`)));
+
+  // Fallbacks to default focused triad
+  const fnma55 = fnmaLow || quotes.find((q) => q.id === 'fnma55');
+  const fnma60 = fnmaCore || quotes.find((q) => q.id === 'fnma60');
+  const fnma65 = fnmaUpper || quotes.find((q) => q.id === 'fnma65');
+
+  const gnma55 = gnmaLow || quotes.find((q) => q.id === 'gnma55');
+  const gnma60 = gnmaCore || quotes.find((q) => q.id === 'gnma60');
+  const gnma65 = gnmaUpper || quotes.find((q) => q.id === 'gnma65');
+
+  // Core benchmark MBS coupon for composite reprice calculation (Core Key)
   const coreMbs = fnma60 || fnma55 || quotes.find((q) => q.agency === 'FNMA') || quotes[0];
   const coreMbsChangeBps = coreMbs?.changeBps ?? (is10YDown ? 15.4 : -12.0);
 
@@ -136,7 +153,7 @@ export const LoBenchmarkDesk: React.FC<LoBenchmarkDeskProps> = ({
     quote: MBSQuote | undefined,
     couponRate: string,
     targetNoteRate: string,
-    isCorePar: boolean,
+    role: 'LOW_KEY' | 'CORE_KEY' | 'UPPER_KEY',
     agencyLabel: 'CONVENTIONAL' | 'GOVERNMENT'
   ) => {
     if (!quote) return null;
@@ -147,8 +164,9 @@ export const LoBenchmarkDesk: React.FC<LoBenchmarkDeskProps> = ({
     const pipelineTotalImpact = impact.dollarValue * pipelineCount;
 
     const isGov = agencyLabel === 'GOVERNMENT';
-    const accentColor = isGov ? 'text-teal-400' : 'text-blue-400';
     const tagBg = isGov ? 'bg-teal-950/60 border-teal-700/50 text-teal-300' : 'bg-blue-950/60 border-blue-700/50 text-blue-300';
+    const isCore = role === 'CORE_KEY';
+    const isLow = role === 'LOW_KEY';
 
     return (
       <div
@@ -157,18 +175,28 @@ export const LoBenchmarkDesk: React.FC<LoBenchmarkDeskProps> = ({
         className={`relative p-3.5 rounded-xl border transition-all cursor-pointer group ${
           isSelected
             ? 'bg-[#1e1b0a] border-[#FFD700] shadow-[0_0_20px_rgba(255,215,0,0.15)] ring-1 ring-[#FFD700]'
-            : isCorePar
-            ? 'bg-[#151515] hover:bg-[#1a1a1a] border-[#FFD700]/40 shadow-md'
+            : isCore
+            ? 'bg-[#151515] hover:bg-[#1a1a1a] border-[#FFD700]/50 shadow-md'
             : 'bg-[#111111] hover:bg-[#161616] border-[#252525]'
         }`}
       >
         {/* Top Badges */}
         <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center space-x-1.5">
+          <div className="flex items-center space-x-1.5 flex-wrap gap-y-1">
             <span className="font-mono font-extrabold text-sm text-white">{quote.symbol}</span>
-            {isCorePar && (
-              <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-[#FFD700]/20 text-[#FFD700] border border-[#FFD700]/50 tracking-wider">
-                CORE PAR
+            {isCore && (
+              <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-[#FFD700]/20 text-[#FFD700] border border-[#FFD700]/60 tracking-wider flex items-center gap-1">
+                <span>★ CORE KEY</span>
+              </span>
+            )}
+            {isLow && (
+              <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-purple-950/60 text-purple-300 border border-purple-800/50 tracking-wider">
+                LOW KEY (Cushion)
+              </span>
+            )}
+            {!isCore && !isLow && (
+              <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-amber-950/60 text-amber-300 border border-amber-800/50 tracking-wider">
+                UPPER KEY (Premium)
               </span>
             )}
           </div>
@@ -263,18 +291,18 @@ export const LoBenchmarkDesk: React.FC<LoBenchmarkDeskProps> = ({
               <span className="px-2 py-0.5 rounded bg-[#FFD700] text-black font-mono font-extrabold text-[10px] uppercase tracking-wider">
                 LOAN OFFICER TRADING DESK
               </span>
-              <span className="px-2 py-0.5 rounded bg-blue-950/80 text-blue-300 border border-blue-800 text-[10px] font-mono font-bold">
-                CORE PRODUCTION SUITE
+              <span className="px-2 py-0.5 rounded bg-[#FFD700]/20 text-[#FFD700] border border-[#FFD700]/50 text-[10px] font-mono font-bold">
+                MBS HIGHWAY ACTIVE
               </span>
               <span className="px-2 py-0.5 rounded bg-green-950/80 text-green-400 border border-green-800 text-[10px] font-mono font-bold">
                 ● LIVE TICK FEED
               </span>
             </div>
             <h2 className="text-lg sm:text-xl font-extrabold text-white mt-1 tracking-tight">
-              10Y Treasury & Core 5.5, 6.0, 6.5 Production Coupons
+              10Y Treasury & Dynamic 3-Coupon Suite (Low Key, Core Key, Upper Key)
             </h2>
             <p className="text-xs text-gray-400 mt-0.5 max-w-2xl">
-              Real-time benchmark movements driving today's wholesale rate sheets for Conventional (Fannie 30Y) and Government (Ginnie II 30Y FHA/VA) originations.
+              Automatic market regime tracking shifts active focus coupons (FNMA/GNMA {activeRegime.lowKeyCoupon}%, {activeRegime.coreKeyCoupon}%, {activeRegime.upperKeyCoupon}%) as 10Y yields trend up or down.
             </p>
           </div>
         </div>
@@ -326,6 +354,81 @@ export const LoBenchmarkDesk: React.FC<LoBenchmarkDeskProps> = ({
               {displayMode === 'decimal' && <span className="text-[9px] opacity-80">(Exact)</span>}
             </button>
           </div>
+        </div>
+      </div>
+
+      {/* Barry Habib / MBS Highway Auto-Transition Dynamic Metric Banner */}
+      <div className="px-4 py-3 bg-[#121212] border-b border-[#222222] flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center space-x-2.5">
+          <div className="p-1.5 rounded-lg bg-[#FFD700]/10 border border-[#FFD700]/30 text-[#FFD700]">
+            <Gauge className="w-4 h-4" />
+          </div>
+          <div>
+            <div className="flex items-center space-x-2">
+              <span className="text-xs font-mono font-bold text-white">
+                Active Focus Tier: <span className="text-[#FFD700]">{activeRegime.title}</span>
+              </span>
+              <span className="text-[10px] font-mono text-gray-400">
+                ({activeRegime.subtitle})
+              </span>
+            </div>
+            <p className="text-[11px] text-gray-400 font-mono">
+              {activeRegime.traderFocusSummary}
+            </p>
+          </div>
+        </div>
+
+        {/* Regime Simulator / Auto Selector */}
+        <div className="flex items-center space-x-1.5 text-xs font-mono">
+          <span className="text-[10px] text-gray-400 mr-1 hidden sm:inline">COUPON TIERS:</span>
+          <button
+            id="btn-regime-auto"
+            onClick={() => setOverrideRegimeId(null)}
+            className={`px-2.5 py-1 rounded border text-[11px] transition-all cursor-pointer ${
+              overrideRegimeId === null
+                ? 'bg-[#FFD700] text-black font-bold border-[#FFD700]'
+                : 'bg-[#181818] text-gray-300 border-[#333] hover:text-white'
+            }`}
+            title="Auto-shift based on live 10Y UST Yield"
+          >
+            ⚡ Auto-Track ({current10Y.toFixed(3)}%)
+          </button>
+          <button
+            id="btn-regime-rally"
+            onClick={() => setOverrideRegimeId('RALLY_LOW')}
+            className={`px-2 py-1 rounded border text-[11px] transition-all cursor-pointer ${
+              overrideRegimeId === 'RALLY_LOW'
+                ? 'bg-green-600 text-white font-bold border-green-500'
+                : 'bg-[#181818] text-gray-400 border-[#333] hover:text-green-300'
+            }`}
+            title="Simulate Rally Market (5.0 / 5.5 / 6.0)"
+          >
+            Rally (5.0/5.5/6.0)
+          </button>
+          <button
+            id="btn-regime-current"
+            onClick={() => setOverrideRegimeId('NORMAL_CURRENT')}
+            className={`px-2 py-1 rounded border text-[11px] transition-all cursor-pointer ${
+              overrideRegimeId === 'NORMAL_CURRENT'
+                ? 'bg-blue-600 text-white font-bold border-blue-500'
+                : 'bg-[#181818] text-gray-400 border-[#333] hover:text-blue-300'
+            }`}
+            title="Current Benchmark (5.5 / 6.0 / 6.5)"
+          >
+            Benchmark (5.5/6.0/6.5)
+          </button>
+          <button
+            id="btn-regime-bear"
+            onClick={() => setOverrideRegimeId('BEAR_HIGH')}
+            className={`px-2 py-1 rounded border text-[11px] transition-all cursor-pointer ${
+              overrideRegimeId === 'BEAR_HIGH'
+                ? 'bg-amber-600 text-white font-bold border-amber-500'
+                : 'bg-[#181818] text-gray-400 border-[#333] hover:text-amber-300'
+            }`}
+            title="Simulate High Yield Bear Market (6.0 / 6.5 / 7.0)"
+          >
+            High Yield (6.0/6.5/7.0)
+          </button>
         </div>
       </div>
 
@@ -654,17 +757,17 @@ export const LoBenchmarkDesk: React.FC<LoBenchmarkDeskProps> = ({
               </span>
             </div>
 
-            {/* Coupons: 5.5%, 6.0%, 6.5% */}
+            {/* Dynamic Focused Coupons: Low Key, Core Key, Upper Key */}
             <div className="space-y-2.5">
-              {renderCouponCard(fnma55, '5.5%', '6.125% – 6.375%', false, 'CONVENTIONAL')}
-              {renderCouponCard(fnma60, '6.0%', '6.625% – 6.875%', true, 'CONVENTIONAL')}
-              {renderCouponCard(fnma65, '6.5%', '7.125% – 7.375%', false, 'CONVENTIONAL')}
+              {renderCouponCard(fnma55, `${activeRegime.lowKeyCoupon}%`, activeRegime.noteRateRangeLow, 'LOW_KEY', 'CONVENTIONAL')}
+              {renderCouponCard(fnma60, `${activeRegime.coreKeyCoupon}%`, activeRegime.noteRateRangeCore, 'CORE_KEY', 'CONVENTIONAL')}
+              {renderCouponCard(fnma65, `${activeRegime.upperKeyCoupon}%`, activeRegime.noteRateRangeUpper, 'UPPER_KEY', 'CONVENTIONAL')}
             </div>
           </div>
 
           <div className="mt-3 text-[11px] text-gray-400 font-mono bg-[#0c0c0c] p-2 rounded-lg border border-[#1f1f1f] flex items-center justify-between">
             <span>Primary Conventional Driver:</span>
-            <span className="text-[#FFD700] font-bold">FNMA 6.0% (Core Par)</span>
+            <span className="text-[#FFD700] font-bold">FNMA {activeRegime.coreKeyCoupon}% (★ Core Key)</span>
           </div>
         </div>
 
@@ -682,17 +785,17 @@ export const LoBenchmarkDesk: React.FC<LoBenchmarkDeskProps> = ({
               </span>
             </div>
 
-            {/* Coupons: 5.5%, 6.0%, 6.5% */}
+            {/* Dynamic Focused Coupons: Low Key, Core Key, Upper Key */}
             <div className="space-y-2.5">
-              {renderCouponCard(gnma55, '5.5%', '5.875% – 6.125%', false, 'GOVERNMENT')}
-              {renderCouponCard(gnma60, '6.0%', '6.375% – 6.625%', true, 'GOVERNMENT')}
-              {renderCouponCard(gnma65, '6.5%', '6.875% – 7.125%', false, 'GOVERNMENT')}
+              {renderCouponCard(gnma55, `${activeRegime.lowKeyCoupon}%`, activeRegime.noteRateRangeLow, 'LOW_KEY', 'GOVERNMENT')}
+              {renderCouponCard(gnma60, `${activeRegime.coreKeyCoupon}%`, activeRegime.noteRateRangeCore, 'CORE_KEY', 'GOVERNMENT')}
+              {renderCouponCard(gnma65, `${activeRegime.upperKeyCoupon}%`, activeRegime.noteRateRangeUpper, 'UPPER_KEY', 'GOVERNMENT')}
             </div>
           </div>
 
           <div className="mt-3 text-[11px] text-gray-400 font-mono bg-[#0c0c0c] p-2 rounded-lg border border-[#1f1f1f] flex items-center justify-between">
             <span>Primary Government Driver:</span>
-            <span className="text-teal-400 font-bold">GNMA II 6.0% (Core Par)</span>
+            <span className="text-teal-400 font-bold">GNMA II {activeRegime.coreKeyCoupon}% (★ Core Key)</span>
           </div>
         </div>
 
