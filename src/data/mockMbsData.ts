@@ -470,21 +470,21 @@ export const INITIAL_QUOTES: MBSQuote[] = [
     name: 'US 10-Year Benchmark Treasury Yield',
     agency: 'UST',
     category: 'TREASURY',
-    price: 4.284,
-    priceFormatted: '4.284%',
+    price: 4.660,
+    priceFormatted: '4.660%',
     change32nds: -4,
-    changeBps: -4.2, // yields down = bond prices up
-    yieldRate: 4.284,
-    yieldChange: -4.2,
+    changeBps: -4.4, // yields down = bond prices up
+    yieldRate: 4.660,
+    yieldChange: -4.4,
     duration: 8.5,
     grossSpreadBps: 0,
-    high: '4.331%',
-    low: '4.278%',
-    open: '4.326%',
+    high: '4.705%',
+    low: '4.622%',
+    open: '4.704%',
     volume: '$84B',
-    couponRate: 4.25,
+    couponRate: 4.50,
     lastUpdated: '11:42:19 AM EST',
-    sparkline: [4.33, 4.32, 4.31, 4.30, 4.29, 4.284],
+    sparkline: [4.70, 4.69, 4.68, 4.67, 4.66, 4.660],
   },
   {
     id: 'mortgage-spread',
@@ -511,17 +511,17 @@ export const INITIAL_QUOTES: MBSQuote[] = [
 ];
 
 export const INITIAL_UST_CURVE: TreasuryCurveData = {
-  y3m: 5.345,
-  y6m: 5.120,
-  y1: 4.880,
-  y2: 4.412,
-  y5: 4.195,
-  y7: 4.240,
-  y10: 4.284,
-  y20: 4.580,
-  y30: 4.512,
-  curve2y10y: -0.128, // -12.8 bps inversion
-  source: 'treasury.gov LIVE',
+  y3m: 4.316,
+  y6m: 4.238,
+  y1: 4.135,
+  y2: 4.208,
+  y5: 4.367,
+  y7: 4.492,
+  y10: 4.660,
+  y20: 4.982,
+  y30: 5.191,
+  curve2y10y: 0.452, // 45.2 bps normal upward sloping curve
+  source: 'CNBC Markets LIVE',
   asOf: 'Today',
 };
 

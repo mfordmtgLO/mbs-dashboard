@@ -66,25 +66,25 @@ export default function App() {
 
   // Volatility Alert System States
   const [currentSession, setCurrentSession] = useState<TradingSessionType>('LIVE_DAILY');
-  const [dailyBaseline10Y, setDailyBaseline10Y] = useState<number>(4.284);
-  const [afterHoursBaseline10Y, setAfterHoursBaseline10Y] = useState<number>(4.300);
+  const [dailyBaseline10Y, setDailyBaseline10Y] = useState<number>(4.704);
+  const [afterHoursBaseline10Y, setAfterHoursBaseline10Y] = useState<number>(4.680);
   const [thresholdBps, setThresholdBps] = useState<number>(3.0);
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
   const [activeToasts, setActiveToasts] = useState<VolatilityAlert[]>([]);
   const [volatilityAlertsHistory, setVolatilityAlertsHistory] = useState<VolatilityAlert[]>([
     {
       id: 'vol-init-1',
-      direction: 'SPIKE_UP',
+      direction: 'DROP_DOWN',
       session: 'LIVE_DAILY',
       sessionLabel: 'Live Daily Bond Session (Pre-Close)',
-      currentYield: 4.318,
-      baselineYield: 4.284,
-      deltaBps: 3.4,
-      timestamp: '09:42:15 AM',
-      headline: '10Y Yield Spiked +3.4 bps (Pre-Close)',
-      message: '10Y Benchmark Treasury yield rose by +3.4 bps to 4.318% during the Live Daily session before close. High risk of negative lender repricing.',
-      marketImpact: 'NEGATIVE REPRICE RISK',
-      actionRecommendation: 'LOCK Floating Loans Immediately',
+      currentYield: 4.660,
+      baselineYield: 4.704,
+      deltaBps: -4.4,
+      timestamp: '09:30:00 AM',
+      headline: '10Y Yield Down -4.4 bps & MBS Coupons Higher (Rates Improving)',
+      message: '10-Year Treasury yield declined -4.4 bps to 4.660% while conventional and government 30Y MBS coupons advanced +5/32 to +7/32nds. Expanding lender origination margins indicate high probability of positive intraday reprices.',
+      marketImpact: 'POSITIVE REPRICE OPPORTUNITY',
+      actionRecommendation: 'FLOAT Strategy Active — Monitor for Improved Rate Sheets',
       isRead: false,
     },
     {
@@ -92,12 +92,12 @@ export default function App() {
       direction: 'DROP_DOWN',
       session: 'AFTER_HOURS',
       sessionLabel: 'After-Hours 10Y Trading Window',
-      currentYield: 4.264,
-      baselineYield: 4.300,
-      deltaBps: -3.6,
+      currentYield: 4.652,
+      baselineYield: 4.680,
+      deltaBps: -2.8,
       timestamp: '06:15:30 PM',
-      headline: '10Y Yield Rallied -3.6 bps (After-Hours)',
-      message: '10Y Benchmark Treasury yield dropped by -3.6 bps to 4.264% during the After-Hours trading window. Bullish momentum with positive pricing adjustments expected.',
+      headline: '10Y Yield Rallied -2.8 bps in Overnight Window',
+      message: '10Y Benchmark Treasury yield eased in global trading. Favorable morning opening anticipated for lender secondary rate sheet pricing.',
       marketImpact: 'POSITIVE REPRICE OPPORTUNITY',
       actionRecommendation: 'FLOAT Strategy Active for Better Pricing',
       isRead: true,
@@ -106,7 +106,7 @@ export default function App() {
   const [isVolatilityDrawerOpen, setIsVolatilityDrawerOpen] = useState<boolean>(false);
 
   // Store base anchor 10Y yield for mean-reverting random walk
-  const baseY10Ref = useRef<number>(4.284);
+  const baseY10Ref = useRef<number>(4.660);
   const lastAlertTimeRef = useRef<{ [key: string]: number }>({});
 
   // Active selected quote
@@ -269,6 +269,12 @@ export default function App() {
         // Synchronize all MBS quotes with live CNBC 10Y Treasury baseline
         const live10Y = data.treasuryCurve?.y10 ?? data.us10yQuote?.yieldRate ?? 4.660;
         const live10YChgBps = data.us10yQuote?.changeBps ?? -4.4;
+        const rawOpen10Y = parseFloat(String(data.us10yQuote?.open || '').replace('%', '')) || +(live10Y - live10YChgBps / 100).toFixed(3);
+        const open10Y = +rawOpen10Y.toFixed(3);
+
+        if (currentSession === 'LIVE_DAILY') {
+          setDailyBaseline10Y(open10Y);
+        }
 
         setQuotes((prevQuotes) =>
           prevQuotes.map((quote) => {
@@ -282,7 +288,7 @@ export default function App() {
                 changeBps: live10YChgBps,
                 high: data.us10yQuote?.high || `${(live10Y + 0.045).toFixed(3)}%`,
                 low: data.us10yQuote?.low || `${(live10Y - 0.038).toFixed(3)}%`,
-                open: data.us10yQuote?.open || `${(live10Y + 0.044).toFixed(3)}%`,
+                open: data.us10yQuote?.open || `${open10Y.toFixed(3)}%`,
                 lastUpdated: data.asOf || new Date().toLocaleTimeString(),
                 sparkline: [...quote.sparkline.slice(1), live10Y],
               };
@@ -293,23 +299,11 @@ export default function App() {
             }
 
             // Agency MBS Pools: FNMA, FHLMC, GNMA
-            const duration = quote.duration || 4.0;
+            const duration = quote.duration || 3.5;
             const histOas = quote.histOas || 20;
-            const openPrice =
-              quote.couponRate <= 3.0
-                ? 87.0
-                : quote.couponRate <= 4.0
-                ? 95.0
-                : quote.couponRate <= 4.5
-                ? 97.0
-                : quote.couponRate <= 5.0
-                ? 98.8
-                : quote.couponRate <= 5.5
-                ? 99.2
-                : quote.couponRate <= 6.0
-                ? 100.8
-                : 102.1;
 
+            // Mathematically derive both morning open price and current live price
+            const openPrice = deriveMbsPrice(quote.couponRate, duration, open10Y, histOas);
             const derivedPrice = deriveMbsPrice(quote.couponRate, duration, live10Y, histOas);
             const priceChangeDec = derivedPrice - openPrice;
             const change32nds = Math.round(priceChangeDec * 32);
@@ -323,6 +317,10 @@ export default function App() {
               change32nds,
               changeBps,
               yieldRate: mbsYield,
+              yieldChange: live10YChgBps,
+              open: decimalTo32nds(openPrice),
+              high: decimalTo32nds(Math.max(derivedPrice, openPrice) + 0.06),
+              low: decimalTo32nds(Math.min(derivedPrice, openPrice) - 0.04),
               lastUpdated: data.asOf || new Date().toLocaleTimeString(),
               sparkline: quote.sparkline ? [...quote.sparkline.slice(1), +derivedPrice.toFixed(3)] : [derivedPrice],
             };
@@ -356,9 +354,9 @@ export default function App() {
       setViewerCount((prev) => Math.max(1200, prev + Math.floor(Math.random() * 7 - 3)));
 
       // 2. 10Y Benchmark Treasury Yield Tick
-      const current10Y = treasuryCurve.y10 ?? 4.284;
-      const noise = (Math.random() - 0.49) * 0.006;
-      const pull = (baseY10Ref.current - current10Y) * 0.03;
+      const current10Y = treasuryCurve.y10 ?? 4.660;
+      const noise = (Math.random() - 0.49) * 0.004;
+      const pull = (baseY10Ref.current - current10Y) * 0.04;
       const new10Y = +(current10Y + noise + pull).toFixed(3);
       const delta10YBps = +((new10Y - current10Y) * 100).toFixed(1);
 
@@ -383,9 +381,9 @@ export default function App() {
 
       // Fluctuate other points on curve slightly
       setTreasuryCurve((prev) => {
-        const y2 = prev.y2 ? +(prev.y2 + (Math.random() - 0.5) * 0.003).toFixed(3) : 4.412;
-        const y5 = prev.y5 ? +(prev.y5 + (Math.random() - 0.5) * 0.004).toFixed(3) : 4.195;
-        const y30 = prev.y30 ? +(prev.y30 + (Math.random() - 0.5) * 0.003).toFixed(3) : 4.512;
+        const y2 = prev.y2 ? +(prev.y2 + (Math.random() - 0.5) * 0.002).toFixed(3) : 4.208;
+        const y5 = prev.y5 ? +(prev.y5 + (Math.random() - 0.5) * 0.003).toFixed(3) : 4.367;
+        const y30 = prev.y30 ? +(prev.y30 + (Math.random() - 0.5) * 0.002).toFixed(3) : 5.191;
         return {
           ...prev,
           y2,
@@ -401,15 +399,13 @@ export default function App() {
         prevQuotes.map((quote) => {
           // Special handling for 10Y Treasury quote
           if (quote.category === 'TREASURY') {
-            const start10Y = 4.326;
-            const chgBps = +((new10Y - start10Y) * 100).toFixed(1);
             return {
               ...quote,
               price: new10Y,
               priceFormatted: `${new10Y.toFixed(3)}%`,
               yieldRate: new10Y,
-              yieldChange: chgBps,
-              changeBps: chgBps,
+              yieldChange: sessionShiftBps,
+              changeBps: sessionShiftBps,
               lastUpdated: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
               sparkline: [...quote.sparkline.slice(1), new10Y],
             };
@@ -420,24 +416,11 @@ export default function App() {
           }
 
           // Agency MBS Pools: FNMA, FHLMC, GNMA
-          const duration = quote.duration || 4.0;
+          const duration = quote.duration || 3.5;
           const histOas = quote.histOas || 20;
-          const openPrice =
-            quote.couponRate <= 3.0
-              ? 87.0
-              : quote.couponRate <= 4.0
-              ? 95.0
-              : quote.couponRate <= 4.5
-              ? 97.0
-              : quote.couponRate <= 5.0
-              ? 98.8
-              : quote.couponRate <= 5.5
-              ? 99.2
-              : quote.couponRate <= 6.0
-              ? 100.8
-              : 102.1;
 
-          // Derive mathematical price
+          // Mathematically derive price shift relative to baseline open yield
+          const openPrice = deriveMbsPrice(quote.couponRate, duration, activeBaseline, histOas);
           const derivedPrice = deriveMbsPrice(quote.couponRate, duration, new10Y, histOas);
           const priceChangeDec = derivedPrice - openPrice;
           const change32nds = Math.round(priceChangeDec * 32);
@@ -453,6 +436,7 @@ export default function App() {
             change32nds,
             changeBps,
             yieldRate: mbsYield,
+            yieldChange: sessionShiftBps,
             lastUpdated: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
             sparkline: updatedSpark,
           };

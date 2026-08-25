@@ -413,11 +413,15 @@ app.post('/api/ask-strategist', async (req, res) => {
 
     const ai = getGeminiClient();
     if (!ai) {
+      const tenYrChg = parseFloat(marketContext?.tenYearChange || '-4.4');
+      const isYieldDown = tenYrChg <= 0;
       return res.json({
-        answer: `[Live Market Strategist Desk] Based on current MBS coupon pricing (${marketContext?.activeCoupon || 'UMBS 30yr 5.5%'} trading at ${marketContext?.price || '99-18+'}, 10Y Treasury at ${marketContext?.tenYear || '4.28%'}), the market is currently balancing macroeconomic data with Fed expectations. For short-term closings (<15 days), locking protects against negative re-pricing risks if upcoming inflation data prints hot. For 30+ day horizons, technical support remains tested at key moving averages.`,
-        lockRecommendation: 'CAUTIOUS LOCK',
-        rationale: 'Volatility risk is elevated around upcoming economic prints.',
-        suggestedCoupon: marketContext?.activeCoupon || 'UMBS 30yr 5.5%',
+        answer: `[Live Market Strategist Desk] Based on current market conditions (${marketContext?.activeCoupon || 'UMBS 30yr 6.0%'} trading at ${marketContext?.price || '102-08'}, 10Y Treasury yield at ${marketContext?.tenYear || '4.660%'} with a ${marketContext?.tenYearChange || '-4.4 bps'} day shift), falling benchmark yields and advancing MBS coupon prices create positive lender margin expansion. This environment translates directly to lower primary mortgage interest rates and a favorable window for positive mid-day rate sheet reprices.`,
+        lockRecommendation: isYieldDown ? 'FLOAT STRATEGY (POSITIVE REPRICE WINDOW)' : 'PROTECTIVE LOCK',
+        rationale: isYieldDown
+          ? '10Y yield drop combined with higher MBS coupon prices supports improving borrower pricing.'
+          : 'Yield surges increase negative reprice risk across wholesale rate sheets.',
+        suggestedCoupon: marketContext?.activeCoupon || 'UMBS 30yr 6.0%',
         isFallback: true,
       });
     }
@@ -425,15 +429,19 @@ app.post('/api/ask-strategist', async (req, res) => {
     const systemPrompt = `You are Dan Gallagher, CFA, the Chief Market Strategist on MBS-Live, a premier real-time financial broadcast and data platform for mortgage loan officers, branch managers, and secondary marketing directors.
 You provide incisive, Wall-Street-grade market commentary on Mortgage-Backed Securities (UMBS 30yr, GNMA, 15yr pools), 10-Year Treasury yields, Federal Reserve monetary policy, inflation metrics (CPI/PCE), lender re-pricing alerts, and Lock vs. Float strategies.
 
+Crucial Market Mechanism:
+- When 10-Year Treasury yields fall (e.g. down -4.4 bps) and MBS coupon prices rise (e.g. up +5/32nds / +15 bps), primary mortgage interest rates DROP / IMPROVE. Wholesale lenders experience widened secondary execution margins, leading to POSITIVE mid-day rate sheet reprices (better pricing, higher lender credits, lower note rates). This is NOT a negative reprice risk.
+- Conversely, when 10-Year yields spike higher and MBS prices fall, mortgage rates RISE / WORSEN, creating NEGATIVE reprice risk where lenders pull sheets and reissue worse pricing.
+
 Current Live Market Data Context:
-- Active Benchmark: ${marketContext?.activeCoupon || 'UMBS 30yr 5.5%'} at ${marketContext?.price || '99-18+'} (${marketContext?.changeBps || '+14'} bps)
-- 10-Year Treasury Yield: ${marketContext?.tenYear || '4.284%'} (${marketContext?.tenYearChange || '-4.2 bps'})
+- Active Benchmark: ${marketContext?.activeCoupon || 'UMBS 30yr 6.0%'} at ${marketContext?.price || '102-08'} (${marketContext?.changeBps || '+15.4'} bps)
+- 10-Year Treasury Yield: ${marketContext?.tenYear || '4.660%'} (${marketContext?.tenYearChange || '-4.4 bps'})
 - 30-Year Conforming Par Rate: ${marketContext?.parRate || '6.625%'}
-- Repricing Risk Index: ${marketContext?.repriceRisk || 'Moderate / Positive Re-price Opportunity'}
+- Repricing Risk Index: ${marketContext?.repriceRisk || 'Positive Re-price Opportunity (Float Window Active)'}
 
 Instructions:
 1. Provide a sharp, professional, 2-3 paragraph answer written in an authoritative yet accessible mortgage broadcast tone.
-2. Clearly distinguish between originator operational advice (e.g. 15-day vs 30-day lock decisions) and secondary market macro mechanics.
+2. Accurately explain the relationship between 10Y Treasury yield drops, rising MBS prices, and improving mortgage rates / positive repricing.
 3. Conclude with a definitive bulleted Lock / Float guidance for:
    - 0-15 Day Closings
    - 15-30 Day Closings

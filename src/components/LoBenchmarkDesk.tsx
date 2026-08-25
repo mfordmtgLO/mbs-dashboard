@@ -16,9 +16,14 @@ import {
   ChevronRight,
   Lock,
   Compass,
+  Scale,
+  Check,
+  AlertTriangle,
+  Flame,
+  Info,
 } from 'lucide-react';
 import { MBSQuote, TreasuryCurveData } from '../types';
-import { computeLoanDollarImpact, decimalTo32nds } from '../utils/mbsCalculations';
+import { computeLoanDollarImpact, decimalTo32nds, analyze10yAndMbsRepriceOutlook } from '../utils/mbsCalculations';
 
 interface LoBenchmarkDeskProps {
   quotes: MBSQuote[];
@@ -43,15 +48,15 @@ export const LoBenchmarkDesk: React.FC<LoBenchmarkDeskProps> = ({
     id: 'us-10y-treasury',
     symbol: '10Y TREASURY',
     name: 'US 10-Year Benchmark Treasury Yield',
-    price: treasuryCurve.y10 ?? 4.284,
-    priceFormatted: `${(treasuryCurve.y10 ?? 4.284).toFixed(3)}%`,
+    price: treasuryCurve.y10 ?? 4.660,
+    priceFormatted: `${(treasuryCurve.y10 ?? 4.660).toFixed(3)}%`,
     change32nds: -4,
-    changeBps: -4.2,
-    yieldRate: treasuryCurve.y10 ?? 4.284,
-    yieldChange: -4.2,
-    high: '4.331%',
-    low: '4.278%',
-    sparkline: [4.33, 4.32, 4.31, 4.30, 4.29, 4.284],
+    changeBps: -4.4,
+    yieldRate: treasuryCurve.y10 ?? 4.660,
+    yieldChange: -4.4,
+    high: '4.705%',
+    low: '4.622%',
+    sparkline: [4.70, 4.69, 4.68, 4.67, 4.66, 4.660],
     agency: 'UST',
     category: 'TREASURY' as const,
   };
@@ -66,8 +71,19 @@ export const LoBenchmarkDesk: React.FC<LoBenchmarkDeskProps> = ({
   const gnma60 = quotes.find((q) => q.id === 'gnma60' || q.symbol === 'GNMA II 30Y 6.0%');
   const gnma65 = quotes.find((q) => q.id === 'gnma65' || q.symbol === 'GNMA II 30Y 6.5%');
 
-  const current10Y = treasuryCurve.y10 ?? tenYearUst.yieldRate ?? 4.284;
+  const current10Y = treasuryCurve.y10 ?? tenYearUst.yieldRate ?? 4.660;
   const is10YDown = (tenYearUst.changeBps || 0) <= 0; // yields dropping is GREEN for MBS / loan pricing
+
+  // Core benchmark MBS coupon for composite reprice calculation (FNMA 6.0% or 5.5%)
+  const coreMbs = fnma60 || fnma55 || quotes.find((q) => q.agency === 'FNMA') || quotes[0];
+  const coreMbsChangeBps = coreMbs?.changeBps ?? (is10YDown ? 15.4 : -12.0);
+
+  // Deep Analysis synthesis
+  const repriceOutlook = analyze10yAndMbsRepriceOutlook(
+    current10Y,
+    tenYearUst.changeBps || 0,
+    coreMbsChangeBps
+  );
 
   const presetAmounts = [300000, 450000, 500000, 650000, 800000, 1000000];
 
@@ -255,6 +271,132 @@ export const LoBenchmarkDesk: React.FC<LoBenchmarkDeskProps> = ({
         </div>
       </div>
 
+      {/* Deep Analysis: 10Y Yield & MBS Coupon Dual-Signal Correlation & Reprice Desk */}
+      <div className="p-4 sm:p-5 border-b border-[#222222] bg-[#0c0c0c]/80">
+        <div className="bg-gradient-to-r from-[#141414] via-[#161616] to-[#121212] rounded-xl border border-[#2c2c2c] p-4 sm:p-5 shadow-lg">
+          <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-[#242424]">
+            <div className="flex items-center space-x-2.5">
+              <div className="p-2 rounded-lg bg-[#FFD700]/10 border border-[#FFD700]/30 text-[#FFD700]">
+                <Scale className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-extrabold text-white uppercase tracking-wider flex items-center gap-2 font-mono">
+                  10Y Treasury & MBS Reprice Dynamics Analysis
+                  <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-[#FFD700]/10 text-[#FFD700] border border-[#FFD700]/30">
+                    DUAL SIGNAL ENGINE
+                  </span>
+                </h3>
+                <p className="text-xs text-gray-400">
+                  Synthesized correlation of benchmark yields and wholesale MBS pricing for mortgage loan originators.
+                </p>
+              </div>
+            </div>
+
+            {/* Reprice Status Badge */}
+            <div className="flex items-center space-x-2">
+              <div
+                className={`px-3 py-1.5 rounded-lg border font-mono text-xs font-bold flex items-center space-x-2 ${repriceOutlook.badgeBg} ${repriceOutlook.badgeBorder} ${repriceOutlook.badgeColor}`}
+              >
+                {repriceOutlook.status === 'POSITIVE_REPRICE' ? (
+                  <Check className="w-4 h-4 text-green-400" />
+                ) : repriceOutlook.status === 'NEGATIVE_REPRICE_RISK' ? (
+                  <AlertTriangle className="w-4 h-4 text-rose-400" />
+                ) : (
+                  <Info className="w-4 h-4 text-amber-400" />
+                )}
+                <span>{repriceOutlook.headline}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Dual Signal Comparison & Strategic Outcome Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 my-3.5">
+            {/* Signal 1: 10Y Benchmark UST */}
+            <div className="p-3.5 rounded-xl bg-[#0e0e0e] border border-[#202020] space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] uppercase font-mono text-gray-400 font-bold">Signal 1: 10Y Benchmark</span>
+                <span
+                  className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded ${
+                    is10YDown
+                      ? 'bg-green-950 text-green-300 border border-green-800/60'
+                      : 'bg-rose-950 text-rose-300 border border-rose-800/60'
+                  }`}
+                >
+                  {is10YDown ? 'YIELD DOWN (BULLISH)' : 'YIELD UP (BEARISH)'}
+                </span>
+              </div>
+              <div className="text-lg font-mono font-extrabold text-white flex items-baseline justify-between">
+                <span>{current10Y.toFixed(3)}%</span>
+                <span className={`text-xs font-bold ${is10YDown ? 'text-green-400' : 'text-rose-400'}`}>
+                  {tenYearUst.changeBps > 0 ? '+' : ''}{tenYearUst.changeBps.toFixed(1)} bps
+                </span>
+              </div>
+              <p className="text-[11px] text-gray-400 leading-tight">
+                {is10YDown
+                  ? 'Lower Treasury yield lowers the cost of capital, reducing rate sheet note rates.'
+                  : 'Higher Treasury yield drives bond yields up and pressures rate sheets.'}
+              </p>
+            </div>
+
+            {/* Signal 2: Production MBS Coupons */}
+            <div className="p-3.5 rounded-xl bg-[#0e0e0e] border border-[#202020] space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] uppercase font-mono text-gray-400 font-bold">Signal 2: 30Y MBS Coupons</span>
+                <span
+                  className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded ${
+                    coreMbsChangeBps >= 0
+                      ? 'bg-green-950 text-green-300 border border-green-800/60'
+                      : 'bg-rose-950 text-rose-300 border border-rose-800/60'
+                  }`}
+                >
+                  {coreMbsChangeBps >= 0 ? 'PRICE UP (BULLISH)' : 'PRICE DOWN (BEARISH)'}
+                </span>
+              </div>
+              <div className="text-lg font-mono font-extrabold text-white flex items-baseline justify-between">
+                <span>{coreMbs?.symbol || 'FNMA 30Y 6.0%'}</span>
+                <span className={`text-xs font-bold ${coreMbsChangeBps >= 0 ? 'text-green-400' : 'text-rose-400'}`}>
+                  {coreMbsChangeBps >= 0 ? '+' : ''}{coreMbs?.change32nds ?? 5}/32 (+{coreMbsChangeBps.toFixed(1)} bp)
+                </span>
+              </div>
+              <p className="text-[11px] text-gray-400 leading-tight">
+                {coreMbsChangeBps >= 0
+                  ? 'Higher MBS coupon prices increase wholesale secondary value, improving lender credits.'
+                  : 'Lower MBS coupon prices erode lender margins and increase borrower costs.'}
+              </p>
+            </div>
+
+            {/* Synthesis: Combined Market Consequence */}
+            <div className="p-3.5 rounded-xl bg-[#111111] border border-[#2c2c2c] space-y-1.5 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] uppercase font-mono text-[#FFD700] font-bold">Rate Sheet Forecast</span>
+                  <span className="text-[10px] font-mono text-gray-400">Confidence: {repriceOutlook.repriceProbability}%</span>
+                </div>
+                <div className="text-sm font-mono font-extrabold mt-1">
+                  <span className={repriceOutlook.rateOutlookColor}>
+                    Mortgage Rates: {repriceOutlook.rateOutlook}
+                  </span>
+                </div>
+              </div>
+              <div className="pt-1.5 border-t border-[#202020] text-[11px] text-gray-300 font-mono">
+                Est. Rate Sheet Shift: <strong className="text-white">{repriceOutlook.estimatedRateSheetShift}</strong>
+              </div>
+            </div>
+          </div>
+
+          {/* Deep Narrative Explanation */}
+          <div className="p-3 rounded-lg bg-[#080808] border border-[#1e1e1e] flex items-start space-x-2.5 text-xs text-gray-300 leading-relaxed">
+            <Info className="w-4 h-4 text-[#FFD700] shrink-0 mt-0.5" />
+            <div>
+              <p>{repriceOutlook.explanation}</p>
+              <div className="mt-1 font-mono text-[11px] text-[#FFD700] font-bold">
+                RECOMMENDED STRATEGY: {repriceOutlook.originatorGuidance}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* 3 Pillar Grids: 10Y Benchmark UST | Conventional Fannie Mae | Government Ginnie Mae */}
       <div className="p-4 sm:p-5 grid grid-cols-1 lg:grid-cols-12 gap-5">
         
@@ -298,11 +440,11 @@ export const LoBenchmarkDesk: React.FC<LoBenchmarkDeskProps> = ({
               <p className="text-[11px] text-gray-400 mt-1">
                 {is10YDown ? (
                   <span className="text-green-400 font-semibold">
-                    ▼ Yields dropping = Bond prices rising (Lender pricing improving)
+                    ▼ 10Y Yield falling & MBS coupons rising = Mortgage rates dropping/improving (Positive reprice opportunity)
                   </span>
                 ) : (
                   <span className="text-rose-400 font-semibold">
-                    ▲ Yields surging = Bond prices falling (Negative reprice risk)
+                    ▲ 10Y Yield surging & MBS coupons falling = Mortgage rates rising/worsening (Negative reprice risk)
                   </span>
                 )}
               </p>
@@ -312,15 +454,15 @@ export const LoBenchmarkDesk: React.FC<LoBenchmarkDeskProps> = ({
             <div className="grid grid-cols-3 gap-2 p-2.5 rounded-lg bg-[#0a0a0a] border border-[#222222] text-center font-mono">
               <div>
                 <div className="text-[9px] uppercase text-gray-500">Day Open</div>
-                <div className="text-xs font-bold text-gray-200">{tenYearUst.open || '4.326%'}</div>
+                <div className="text-xs font-bold text-gray-200">{tenYearUst.open || '4.704%'}</div>
               </div>
               <div>
                 <div className="text-[9px] uppercase text-gray-500">Day Low</div>
-                <div className="text-xs font-bold text-green-400">{tenYearUst.low || '4.278%'}</div>
+                <div className="text-xs font-bold text-green-400">{tenYearUst.low || '4.622%'}</div>
               </div>
               <div>
                 <div className="text-[9px] uppercase text-gray-500">Day High</div>
-                <div className="text-xs font-bold text-rose-400">{tenYearUst.high || '4.331%'}</div>
+                <div className="text-xs font-bold text-rose-400">{tenYearUst.high || '4.705%'}</div>
               </div>
             </div>
 
