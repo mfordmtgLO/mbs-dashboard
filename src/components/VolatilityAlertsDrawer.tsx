@@ -18,6 +18,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   Filter,
+  LineChart,
 } from 'lucide-react';
 import { VolatilityAlert, TradingSessionType } from '../types';
 
@@ -36,6 +37,7 @@ interface VolatilityAlertsDrawerProps {
   current10YYield: number;
   dailyBaseline10Y: number;
   afterHoursBaseline10Y: number;
+  onSelectAction?: (alert: VolatilityAlert, action: 'chart' | 'calculator' | 'lock') => void;
 }
 
 export const VolatilityAlertsDrawer: React.FC<VolatilityAlertsDrawerProps> = ({
@@ -53,6 +55,7 @@ export const VolatilityAlertsDrawer: React.FC<VolatilityAlertsDrawerProps> = ({
   current10YYield,
   dailyBaseline10Y,
   afterHoursBaseline10Y,
+  onSelectAction,
 }) => {
   const [filterSession, setFilterSession] = useState<'ALL' | 'LIVE_DAILY' | 'AFTER_HOURS'>('ALL');
   const [filterDirection, setFilterDirection] = useState<'ALL' | 'SPIKE_UP' | 'DROP_DOWN'>('ALL');
@@ -312,6 +315,46 @@ export const VolatilityAlertsDrawer: React.FC<VolatilityAlertsDrawerProps> = ({
                       <span>Rate Impact: <strong className={isSpikeRed ? 'text-red-400' : 'text-green-400'}>{alert.marketImpact}</strong></span>
                       <span className="text-gray-500">10Y: {alert.currentYield.toFixed(3)}%</span>
                     </div>
+
+                    {/* Action buttons inside history card */}
+                    {onSelectAction && (
+                      <div className="mt-2.5 pt-2 border-t border-[#222222]/80 flex items-center gap-2">
+                        {isSpikeRed ? (
+                          <button
+                            onClick={() => {
+                              onClose();
+                              onSelectAction(alert, 'lock');
+                            }}
+                            className="flex-1 py-1 px-2 rounded-lg bg-red-950/90 hover:bg-red-900 border border-red-700/70 text-red-200 font-mono text-[10px] font-bold flex items-center justify-center space-x-1 transition-all cursor-pointer"
+                          >
+                            <Lock className="w-3 h-3 text-red-400" />
+                            <span>Lock Guidance</span>
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => {
+                              onClose();
+                              onSelectAction(alert, 'calculator');
+                            }}
+                            className="flex-1 py-1 px-2 rounded-lg bg-green-950/90 hover:bg-green-900 border border-green-700/70 text-green-200 font-mono text-[10px] font-bold flex items-center justify-center space-x-1 transition-all cursor-pointer"
+                          >
+                            <Unlock className="w-3 h-3 text-green-400" />
+                            <span>Float Strategy</span>
+                          </button>
+                        )}
+
+                        <button
+                          onClick={() => {
+                            onClose();
+                            onSelectAction(alert, 'chart');
+                          }}
+                          className="py-1 px-2.5 rounded-lg bg-[#141414] hover:bg-[#202020] border border-[#333333] text-gray-300 hover:text-white font-mono text-[10px] flex items-center space-x-1 transition-all cursor-pointer"
+                        >
+                          <LineChart className="w-3 h-3 text-emerald-400" />
+                          <span>View 10Y Chart</span>
+                        </button>
+                      </div>
+                    )}
                   </div>
                 );
               })

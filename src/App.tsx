@@ -15,6 +15,7 @@ import { AiStrategistModal } from './components/AiStrategistModal';
 import { VolatilityToastContainer } from './components/VolatilityToastContainer';
 import { VolatilityAlertsDrawer } from './components/VolatilityAlertsDrawer';
 import { VolatilityControlBar } from './components/VolatilityControlBar';
+import { VolatilityStrategyModal } from './components/VolatilityStrategyModal';
 import { LoBenchmarkDesk } from './components/LoBenchmarkDesk';
 import { HousingBriefArticleDesk } from './components/HousingBriefArticleDesk';
 import { playRedVolatilityChime, playGreenVolatilityChime } from './utils/audioAlerts';
@@ -104,6 +105,8 @@ export default function App() {
     },
   ]);
   const [isVolatilityDrawerOpen, setIsVolatilityDrawerOpen] = useState<boolean>(false);
+  const [strategyModalAlert, setStrategyModalAlert] = useState<VolatilityAlert | null>(null);
+  const [aiModalPrompt, setAiModalPrompt] = useState<string | undefined>(undefined);
 
   // Store base anchor 10Y yield and open baseline for smooth, authentic pricing
   const baseY10Ref = useRef<number>(4.660);
@@ -483,9 +486,11 @@ export default function App() {
   // Handle Toast Action Clicks
   const handleToastAction = (alert: VolatilityAlert, action: 'chart' | 'calculator' | 'lock') => {
     if (action === 'chart') {
+      setSelectedQuoteId('us-10y-treasury');
       setActiveTab('charts');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     } else if (action === 'calculator' || action === 'lock') {
-      setActiveTab('calculator');
+      setStrategyModalAlert(alert);
     }
   };
 
@@ -843,14 +848,43 @@ export default function App() {
         current10YYield={treasuryCurve.y10 ?? 4.284}
         dailyBaseline10Y={dailyBaseline10Y}
         afterHoursBaseline10Y={afterHoursBaseline10Y}
+        onSelectAction={handleToastAction}
+      />
+
+      {/* Volatility Tactical Lock/Float Strategy Advisory Modal */}
+      <VolatilityStrategyModal
+        alert={strategyModalAlert}
+        isOpen={!!strategyModalAlert}
+        onClose={() => setStrategyModalAlert(null)}
+        onOpenCalculator={() => {
+          setStrategyModalAlert(null);
+          setActiveTab('calculator');
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }}
+        onOpenChart={() => {
+          setStrategyModalAlert(null);
+          setSelectedQuoteId('us-10y-treasury');
+          setActiveTab('charts');
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }}
+        onAskAi={(promptText) => {
+          setStrategyModalAlert(null);
+          setAiModalPrompt(promptText);
+          setIsAiModalOpen(true);
+        }}
+        activeQuote={activeQuote}
       />
 
       {/* AI Strategist Modal */}
       <AiStrategistModal
         isOpen={isAiModalOpen}
-        onClose={() => setIsAiModalOpen(false)}
+        onClose={() => {
+          setIsAiModalOpen(false);
+          setAiModalPrompt(undefined);
+        }}
         activeQuote={activeQuote}
         tenYearQuote={tenYearQuote}
+        initialPrompt={aiModalPrompt}
       />
     </div>
   );

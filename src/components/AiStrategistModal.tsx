@@ -7,6 +7,7 @@ interface AiStrategistModalProps {
   onClose: () => void;
   activeQuote: MBSQuote;
   tenYearQuote?: MBSQuote;
+  initialPrompt?: string;
 }
 
 export const AiStrategistModal: React.FC<AiStrategistModalProps> = ({
@@ -14,11 +15,20 @@ export const AiStrategistModal: React.FC<AiStrategistModalProps> = ({
   onClose,
   activeQuote,
   tenYearQuote,
+  initialPrompt,
 }) => {
-  const [query, setQuery] = useState<string>('');
+  const [query, setQuery] = useState<string>(initialPrompt || '');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [response, setResponse] = useState<string | null>(null);
   const [recommendation, setRecommendation] = useState<string | null>(null);
+
+  // Auto-run when opened with initialPrompt
+  React.useEffect(() => {
+    if (isOpen && initialPrompt) {
+      setQuery(initialPrompt);
+      handleAsk(initialPrompt);
+    }
+  }, [isOpen, initialPrompt]);
 
   if (!isOpen) return null;
 

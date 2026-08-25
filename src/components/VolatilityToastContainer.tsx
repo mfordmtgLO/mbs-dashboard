@@ -14,6 +14,7 @@ import {
   Lock,
   Unlock,
   Radio,
+  LineChart,
 } from 'lucide-react';
 import { VolatilityAlert, TradingSessionType } from '../types';
 
@@ -238,16 +239,26 @@ const VolatilityToastItem: React.FC<VolatilityToastItemProps> = ({
         <div className="flex items-center justify-between pt-1 gap-2">
           {isSpikeRed ? (
             <button
-              onClick={() => onSelectAction && onSelectAction(alert, 'lock')}
-              className="flex-1 py-1.5 px-2 bg-red-600 hover:bg-red-500 text-white font-mono text-[11px] font-bold rounded-lg transition-all flex items-center justify-center space-x-1 cursor-pointer shadow"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onDismiss();
+                if (onSelectAction) onSelectAction(alert, 'lock');
+              }}
+              className="flex-1 py-1.5 px-2 bg-red-600 hover:bg-red-500 active:scale-95 text-white font-mono text-[11px] font-bold rounded-lg transition-all flex items-center justify-center space-x-1 cursor-pointer shadow"
             >
               <Lock className="w-3 h-3" />
               <span>Lock Guidance</span>
             </button>
           ) : (
             <button
-              onClick={() => onSelectAction && onSelectAction(alert, 'calculator')}
-              className="flex-1 py-1.5 px-2 bg-green-600 hover:bg-green-500 text-white font-mono text-[11px] font-bold rounded-lg transition-all flex items-center justify-center space-x-1 cursor-pointer shadow"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onDismiss();
+                if (onSelectAction) onSelectAction(alert, 'calculator');
+              }}
+              className="flex-1 py-1.5 px-2 bg-green-600 hover:bg-green-500 active:scale-95 text-white font-mono text-[11px] font-bold rounded-lg transition-all flex items-center justify-center space-x-1 cursor-pointer shadow"
             >
               <Unlock className="w-3 h-3" />
               <span>Float Strategy</span>
@@ -255,9 +266,15 @@ const VolatilityToastItem: React.FC<VolatilityToastItemProps> = ({
           )}
 
           <button
-            onClick={() => onSelectAction && onSelectAction(alert, 'chart')}
-            className="py-1.5 px-3 bg-[#181818] hover:bg-[#252525] border border-[#333333] text-gray-300 hover:text-white font-mono text-[11px] font-medium rounded-lg transition-all flex items-center space-x-1 cursor-pointer"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onDismiss();
+              if (onSelectAction) onSelectAction(alert, 'chart');
+            }}
+            className="py-1.5 px-3 bg-[#181818] hover:bg-[#252525] active:scale-95 border border-[#333333] text-gray-300 hover:text-white font-mono text-[11px] font-medium rounded-lg transition-all flex items-center space-x-1 cursor-pointer"
           >
+            <LineChart className="w-3 h-3 text-emerald-400" />
             <span>View 10Y Chart</span>
           </button>
         </div>
