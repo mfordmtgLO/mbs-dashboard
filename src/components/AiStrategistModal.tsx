@@ -1,6 +1,20 @@
 import React, { useState } from 'react';
-import { X, Sparkles, Send, Radio, Loader2, ShieldCheck, TrendingUp, HelpCircle, CheckCircle2, Globe, ExternalLink, Link2 } from 'lucide-react';
-import { MBSQuote, GroundingSource } from '../types';
+import {
+  X,
+  Sparkles,
+  Send,
+  Radio,
+  Loader2,
+  ShieldCheck,
+  Globe,
+  ExternalLink,
+  Link2,
+  Award,
+  Cpu,
+  CheckCircle2,
+} from 'lucide-react';
+import { MBSQuote, GroundingSource, LockAdviceRecord, LockAccuracyDatabaseSummary } from '../types';
+import { recordNewLockAdvice } from '../utils/lockAdviceDatabaseEngine';
 
 interface AiStrategistModalProps {
   isOpen: boolean;
@@ -8,6 +22,10 @@ interface AiStrategistModalProps {
   activeQuote: MBSQuote;
   tenYearQuote?: MBSQuote;
   initialPrompt?: string;
+  accuracySummary?: LockAccuracyDatabaseSummary;
+  records?: LockAdviceRecord[];
+  onUpdateRecords?: (newRecords: LockAdviceRecord[]) => void;
+  onViewAccuracyDesk?: () => void;
 }
 
 export const AiStrategistModal: React.FC<AiStrategistModalProps> = ({
@@ -16,13 +34,19 @@ export const AiStrategistModal: React.FC<AiStrategistModalProps> = ({
   activeQuote,
   tenYearQuote,
   initialPrompt,
+  accuracySummary,
+  records = [],
+  onUpdateRecords,
+  onViewAccuracyDesk,
 }) => {
   const [query, setQuery] = useState<string>(initialPrompt || '');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [response, setResponse] = useState<string | null>(null);
   const [recommendation, setRecommendation] = useState<string | null>(null);
+  const [headlineDirective, setHeadlineDirective] = useState<string | null>(null);
   const [groundingSources, setGroundingSources] = useState<GroundingSource[]>([]);
   const [searchQueries, setSearchQueries] = useState<string[]>([]);
+  const [justLogged, setJustLogged] = useState<boolean>(false);
 
   // Auto-run when opened with initialPrompt
   React.useEffect(() => {
@@ -34,14 +58,23 @@ export const AiStrategistModal: React.FC<AiStrategistModalProps> = ({
 
   if (!isOpen) return null;
 
+  const current10YYield = tenYearQuote ? tenYearQuote.yieldRate || 4.66 : 4.66;
+  const currentAccPct = accuracySummary ? accuracySummary.overallAccuracyPct : 78.4;
+  const isDefensive = accuracySummary
+    ? accuracySummary.currentRiskStrategyMode === 'DEFENSIVE_RISK_MITIGATION'
+    : false;
+
   const handleAsk = async (promptText?: string) => {
     const questionToAsk = promptText || query;
     if (!questionToAsk.trim()) return;
 
     setIsLoading(true);
     setResponse(null);
+    setRecommendation(null);
+    setHeadlineDirective(null);
     setGroundingSources([]);
     setSearchQueries([]);
+    setJustLogged(false);
 
     try {
       const res = await fetch('/api/ask-strategist', {
@@ -58,21 +91,55 @@ export const AiStrategistModal: React.FC<AiStrategistModalProps> = ({
             parRate: '6.625%',
             repriceRisk: 'Positive Re-price Opportunity (Float Window Active)',
           },
+          accuracyContext: {
+            accuracyPct: currentAccPct,
+            riskMode: isDefensive ? 'DEFENSIVE_RISK_MITIGATION' : 'OPTIMAL_CONVICTION',
+          },
         }),
       });
 
       const data = await res.json();
-      setResponse(data.answer || data.fallbackAnswer || 'Unable to retrieve answer.');
-      setRecommendation(data.lockRecommendation || 'SELECTIVE LOCK');
+      const generatedAnswer = data.answer || data.fallbackAnswer || 'Unable to retrieve answer.';
+      const rec = data.lockRecommendation || (isDefensive ? 'PROTECTIVE LOCK' : 'TACTICAL FLOAT');
+      const directive = data.headlineDirective || `${rec} — Active desk guidance`;
+
+      setResponse(generatedAnswer);
+      setRecommendation(rec);
+      setHeadlineDirective(directive);
+
       if (data.groundingSources && Array.isArray(data.groundingSources)) {
         setGroundingSources(data.groundingSources);
       }
       if (data.searchQueries && Array.isArray(data.searchQueries)) {
         setSearchQueries(data.searchQueries);
       }
+
+      // Automatically log recommendation into the Trackable Database
+      if (onUpdateRecords) {
+        const mappedAdvice = rec.toUpperCase().includes('FLOAT') ? 'FLOAT' : 'LOCK';
+        const { updatedRecords } = recordNewLockAdvice(
+          questionToAsk,
+          mappedAdvice,
+          directive,
+          generatedAnswer.slice(0, 240) + '...',
+          activeQuote,
+          current10YYield,
+          'ASK_STRATEGIST',
+          {
+            loanAmount: 500000,
+            program: 'Conventional',
+            closingDays: 15,
+          },
+          records
+        );
+        onUpdateRecords(updatedRecords);
+        setJustLogged(true);
+      }
     } catch (err) {
       console.error('Failed to query strategist:', err);
-      setResponse('Market desk is monitoring resistance lines. For 15-day closings, protect against reprices if yields spike.');
+      setResponse(
+        'Market desk is monitoring resistance lines. For 15-day closings, protect against reprices if yields spike.'
+      );
       setRecommendation('CAUTIOUS LOCK');
     } finally {
       setIsLoading(false);
@@ -96,7 +163,7 @@ export const AiStrategistModal: React.FC<AiStrategistModalProps> = ({
               <Sparkles className="w-5 h-5 text-[#FFD700]" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
+              <h3 className="text-base font-bold text-white flex items-center gap-2 flex-wrap">
                 Ask Chief Market Strategist Dan Gallagher
                 <span className="px-1.5 py-0.2 rounded bg-blue-950 text-blue-400 text-[10px] font-mono border border-blue-700/50 flex items-center gap-1">
                   <Globe className="w-3 h-3 text-blue-400" />
@@ -118,19 +185,62 @@ export const AiStrategistModal: React.FC<AiStrategistModalProps> = ({
           </button>
         </div>
 
-        {/* Live Context Strip */}
-        <div className="px-4 py-2 bg-[#080808] border-b border-[#222222] flex items-center justify-between text-xs font-mono">
+        {/* Live Context & Accuracy Meter Strip */}
+        <div className="px-4 py-2 bg-[#080808] border-b border-[#222222] flex flex-wrap items-center justify-between gap-2 text-xs font-mono">
           <div className="flex items-center space-x-2 text-gray-300">
             <Radio className="w-3.5 h-3.5 text-green-400 animate-pulse" />
-            <span>Market Context: {activeQuote.symbol} at <strong className="text-[#FFD700]">{activeQuote.priceFormatted}</strong></span>
+            <span>
+              Market: {activeQuote.symbol} at{' '}
+              <strong className="text-[#FFD700]">{activeQuote.priceFormatted}</strong>
+            </span>
+            <span className="text-green-400 font-bold">(+{activeQuote.change32nds}/32)</span>
           </div>
-          <div className="text-green-400 font-bold">
-            +{activeQuote.change32nds}/32 ({activeQuote.changeBps > 0 ? '+' : ''}{activeQuote.changeBps.toFixed(1)} bps)
+
+          {/* Dan's Live Accuracy Badge */}
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={onViewAccuracyDesk}
+              title="Click to view full Lock Advice Trackable Database"
+              className="px-2 py-0.5 rounded bg-[#181818] hover:bg-[#222222] border border-[#333333] text-[10px] text-gray-300 hover:text-white flex items-center gap-1.5 cursor-pointer transition-all"
+            >
+              <Award className="w-3 h-3 text-[#FFD700]" />
+              <span>24h Advice Accuracy:</span>
+              <strong className={currentAccPct >= 60 ? 'text-green-400' : 'text-rose-400'}>
+                {currentAccPct}%
+              </strong>
+              <span className="text-gray-500">(&ge;60% Target)</span>
+            </button>
           </div>
         </div>
 
         {/* Modal Body */}
         <div className="p-5 overflow-y-auto space-y-4 flex-1 text-xs bg-[#0c0c0c]">
+          {/* Active AI Risk Assessment Mode Banner */}
+          <div
+            className={`p-2.5 rounded-lg border text-xs font-mono flex items-center justify-between ${
+              isDefensive
+                ? 'bg-amber-950/40 border-amber-600/50 text-amber-300'
+                : 'bg-green-950/40 border-green-700/50 text-green-300'
+            }`}
+          >
+            <div className="flex items-center space-x-2">
+              <Cpu className="w-3.5 h-3.5 text-[#FFD700]" />
+              <span className="font-bold">
+                {isDefensive
+                  ? '🛡️ Adaptive Defensive Risk Mode Active (<60% Target Trigger)'
+                  : '🎯 Optimal Conviction Mode Active (Accuracy > 60% Target)'}
+              </span>
+            </div>
+            {onViewAccuracyDesk && (
+              <span
+                className="text-[10px] text-gray-400 underline cursor-pointer hover:text-white"
+                onClick={onViewAccuracyDesk}
+              >
+                Audited Database →
+              </span>
+            )}
+          </div>
+
           {/* Sample Prompts */}
           {!response && !isLoading && (
             <div className="space-y-2">
@@ -161,7 +271,7 @@ export const AiStrategistModal: React.FC<AiStrategistModalProps> = ({
             <div className="py-12 flex flex-col items-center justify-center space-y-3">
               <Loader2 className="w-8 h-8 text-[#FFD700] animate-spin" />
               <p className="text-sm font-semibold text-gray-200">
-                Searching Google Live Data & Analyzing MBS Spreads...
+                Searching Google Live Data & Evaluating 24h MBS Spreads...
               </p>
               <span className="text-xs text-blue-400 font-mono flex items-center gap-1">
                 <Globe className="w-3.5 h-3.5 text-blue-400" />
@@ -186,6 +296,24 @@ export const AiStrategistModal: React.FC<AiStrategistModalProps> = ({
                 </div>
               )}
 
+              {/* Automatic Database Log Confirmation */}
+              {justLogged && (
+                <div className="p-2 bg-[#0c1a10] border border-green-700/60 rounded-lg flex items-center justify-between text-[11px] font-mono text-green-300">
+                  <span className="flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-green-400" />
+                    Recorded to Lock Advice Trackable Database (24h Lookback Active)
+                  </span>
+                  {onViewAccuracyDesk && (
+                    <button
+                      onClick={onViewAccuracyDesk}
+                      className="underline text-[#FFD700] hover:text-white cursor-pointer"
+                    >
+                      View Ledger
+                    </button>
+                  )}
+                </div>
+              )}
+
               <div className="bg-[#141414] border border-[#262626] rounded-lg p-4 text-gray-200 space-y-3 leading-relaxed whitespace-pre-line">
                 {response}
               </div>
@@ -195,7 +323,10 @@ export const AiStrategistModal: React.FC<AiStrategistModalProps> = ({
                 <div className="flex items-center gap-1.5 flex-wrap text-[10px] font-mono text-gray-400">
                   <span className="text-gray-500">Searches executed:</span>
                   {searchQueries.map((sq, idx) => (
-                    <span key={idx} className="px-2 py-0.5 rounded bg-[#161616] border border-[#262626] text-gray-300">
+                    <span
+                      key={idx}
+                      className="px-2 py-0.5 rounded bg-[#161616] border border-[#262626] text-gray-300"
+                    >
                       "{sq}"
                     </span>
                   ))}
@@ -254,4 +385,3 @@ export const AiStrategistModal: React.FC<AiStrategistModalProps> = ({
     </div>
   );
 };
-

@@ -18,7 +18,16 @@ import { VolatilityControlBar } from './components/VolatilityControlBar';
 import { VolatilityStrategyModal } from './components/VolatilityStrategyModal';
 import { LoBenchmarkDesk } from './components/LoBenchmarkDesk';
 import { HousingBriefArticleDesk } from './components/HousingBriefArticleDesk';
+import { LockAdviceDatabaseDesk } from './components/LockAdviceDatabaseDesk';
+import { LoClientPortfolioDesk } from './components/LoClientPortfolioDesk';
 import { playRedVolatilityChime, playGreenVolatilityChime } from './utils/audioAlerts';
+import {
+  loadSavedLockAdviceRecords,
+  saveLockAdviceRecords,
+  calculateAccuracySummary,
+  recordNewLockAdvice,
+} from './utils/lockAdviceDatabaseEngine';
+import { LockAdviceRecord } from './types';
 
 import {
   INITIAL_QUOTES,
@@ -46,12 +55,18 @@ import {
 import { generateIntradayData, decimalTo32nds, deriveMbsPrice, parseTreasuryXml } from './utils/mbsCalculations';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'studio' | 'charts' | 'articles' | 'qa' | 'calculator' | 'calendar'>('studio');
+  const [activeTab, setActiveTab] = useState<
+    'studio' | 'charts' | 'articles' | 'qa' | 'calculator' | 'calendar' | 'lock-database' | 'watchlist-crm'
+  >('studio');
   const [quotes, setQuotes] = useState<MBSQuote[]>(INITIAL_QUOTES);
   const [selectedQuoteId, setSelectedQuoteId] = useState<string>('fnma55');
   const [treasuryCurve, setTreasuryCurve] = useState<TreasuryCurveData>(INITIAL_UST_CURVE);
   const [macroIndices, setMacroIndices] = useState<TapeItem[]>(MACRO_INDICES);
   const [stories, setStories] = useState<MarketStory[]>(INITIAL_MARKET_STORIES);
+
+  // Lock Advice Database & Accuracy Tracking Engine
+  const [adviceRecords, setAdviceRecords] = useState<LockAdviceRecord[]>(() => loadSavedLockAdviceRecords());
+  const adviceSummary = calculateAccuracySummary(adviceRecords);
 
   const [commentaries, setCommentaries] = useState<CommentaryMessage[]>(INITIAL_COMMENTARY);
   const [questions, setQuestions] = useState<QAQuestion[]>(INITIAL_QUESTIONS);
@@ -628,6 +643,7 @@ export default function App() {
         onToggleSession={handleToggleSession}
         onOpenVolatilityDrawer={() => setIsVolatilityDrawerOpen(true)}
         volatilityAlertCount={volatilityAlertsHistory.filter((a) => !a.isRead).length}
+        adviceAccuracyPct={adviceSummary.overallAccuracyPct}
       />
 
       {/* Real-time Continuous Market Ticker Tape */}
@@ -791,14 +807,50 @@ export default function App() {
           </div>
         )}
 
-        {/* Tab 4: Mortgage Pro Calculator */}
+        {/* Tab 4: Dan Gallagher Lock Advice Database & 24h Accuracy Trackable Engine */}
+        {activeTab === 'lock-database' && (
+          <div className="space-y-6">
+            <LockAdviceDatabaseDesk
+              records={adviceRecords}
+              summary={adviceSummary}
+              onUpdateRecords={(newRecords) => setAdviceRecords(newRecords)}
+              currentQuotes={quotes}
+              onAskAiStrategist={(scenarioPrompt) => {
+                setAiModalPrompt(scenarioPrompt);
+                setIsAiModalOpen(true);
+              }}
+            />
+          </div>
+        )}
+
+        {/* Tab 5: Custom MBS Watchlists & Client Loan Closings CRM Desk (CSV/Excel Import & Live MBS Deltas) */}
+        {activeTab === 'watchlist-crm' && (
+          <div className="space-y-6">
+            <LoClientPortfolioDesk
+              quotes={quotes}
+              current10YYield={treasuryCurve.y10 ?? 4.660}
+              onSyncPortfolioCouponsToWatchlist={(coupons) => {
+                // Also available in benchmark desk
+              }}
+              onSelectCouponForChart={(symbol) => {
+                const match = quotes.find((q) => q.symbol.toLowerCase() === symbol.toLowerCase() || q.name.toLowerCase().includes(symbol.toLowerCase()));
+                if (match) {
+                  setSelectedQuoteId(match.id);
+                  setActiveTab('charts');
+                }
+              }}
+            />
+          </div>
+        )}
+
+        {/* Tab 6: Mortgage Pro Calculator */}
         {activeTab === 'calculator' && (
           <div className="space-y-6">
             <MortgageProCalculator activeQuote={activeQuote} />
           </div>
         )}
 
-        {/* Tab 5: Economic Calendar */}
+        {/* Tab 7: Economic Calendar */}
         {activeTab === 'calendar' && (
           <div className="space-y-6">
             <EconomicCalendarWidget events={ECONOMIC_CALENDAR} />
@@ -887,6 +939,13 @@ export default function App() {
         activeQuote={activeQuote}
         tenYearQuote={tenYearQuote}
         initialPrompt={aiModalPrompt}
+        accuracySummary={adviceSummary}
+        records={adviceRecords}
+        onUpdateRecords={(newRecords) => setAdviceRecords(newRecords)}
+        onViewAccuracyDesk={() => {
+          setIsAiModalOpen(false);
+          setActiveTab('lock-database');
+        }}
       />
     </div>
   );

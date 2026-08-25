@@ -3,8 +3,8 @@ import { Radio, Bell, Volume2, VolumeX, ShieldAlert, Sparkles, TrendingUp, Users
 import { MBSQuote, TradingSessionType } from '../types';
 
 interface NavbarProps {
-  activeTab: 'studio' | 'charts' | 'articles' | 'qa' | 'calculator' | 'calendar';
-  setActiveTab: (tab: 'studio' | 'charts' | 'articles' | 'qa' | 'calculator' | 'calendar') => void;
+  activeTab: 'studio' | 'charts' | 'articles' | 'qa' | 'calculator' | 'calendar' | 'lock-database' | 'watchlist-crm';
+  setActiveTab: (tab: 'studio' | 'charts' | 'articles' | 'qa' | 'calculator' | 'calendar' | 'lock-database' | 'watchlist-crm') => void;
   viewerCount: number;
   quotes: MBSQuote[];
   isAudioLive: boolean;
@@ -15,6 +15,7 @@ interface NavbarProps {
   onToggleSession?: () => void;
   onOpenVolatilityDrawer?: () => void;
   volatilityAlertCount?: number;
+  adviceAccuracyPct?: number;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -30,6 +31,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onToggleSession,
   onOpenVolatilityDrawer,
   volatilityAlertCount = 0,
+  adviceAccuracyPct = 78.4,
 }) => {
   const benchmarkQuote = quotes.find((q) => q.id === 'umbs-30-55') || quotes[0];
   const tenYear = quotes.find((q) => q.id === 'us-10y-treasury');
@@ -115,7 +117,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
       {/* Main Navigation Header */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-        {/* Brand & Logo matching Elegant Dark aesthetic */}
+        {/* Brand & Logo */}
         <div className="flex items-center space-x-3.5">
           <div className="w-10 h-10 bg-[#FFD700] rounded-lg flex items-center justify-center shadow-lg shadow-[#FFD700]/10 flex-shrink-0">
             <div className="w-5 h-5 bg-[#080808] rotate-45 flex items-center justify-center">
@@ -138,79 +140,105 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
         </div>
 
-        {/* Tab Navigation with Elegant Dark Gold Accents */}
-        <nav className="hidden md:flex items-center space-x-1 bg-[#0c0c0c] p-1 rounded-xl border border-[#222222]">
+        {/* Tab Navigation */}
+        <nav className="hidden xl:flex items-center space-x-1 bg-[#0c0c0c] p-1 rounded-xl border border-[#222222]">
           <button
             id="nav-studio"
             onClick={() => setActiveTab('studio')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
               activeTab === 'studio'
                 ? 'bg-[#1a1a1a] text-[#FFD700] border border-[#FFD700]/40 shadow-md'
                 : 'text-gray-400 hover:text-white hover:bg-[#141414]'
             }`}
           >
-            Live Studio & Feed
+            Live Studio
+          </button>
+          <button
+            id="nav-lock-database"
+            onClick={() => setActiveTab('lock-database')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center space-x-1.5 ${
+              activeTab === 'lock-database'
+                ? 'bg-[#1a1a1a] text-[#FFD700] border border-[#FFD700]/40 shadow-md'
+                : 'text-gray-400 hover:text-white hover:bg-[#141414]'
+            }`}
+          >
+            <span>Dan's Lock Advice DB</span>
+            <span className={`px-1.5 py-0.2 text-[9px] rounded font-mono font-bold ${
+              adviceAccuracyPct >= 60
+                ? 'bg-green-950/80 text-green-400 border border-green-700/60'
+                : 'bg-rose-950/80 text-rose-400 border border-rose-700/60'
+            }`}>
+              {adviceAccuracyPct}% Win
+            </span>
+          </button>
+          <button
+            id="nav-watchlist-crm"
+            onClick={() => setActiveTab('watchlist-crm')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center space-x-1.5 ${
+              activeTab === 'watchlist-crm'
+                ? 'bg-[#1a1a1a] text-[#FFD700] border border-[#FFD700]/40 shadow-md'
+                : 'text-gray-400 hover:text-white hover:bg-[#141414]'
+            }`}
+          >
+            <span>Watchlists & CRM</span>
+            <span className="px-1.5 py-0.2 text-[8px] bg-blue-950 text-blue-400 border border-blue-700/60 rounded font-mono font-bold">
+              CSV/XLS
+            </span>
           </button>
           <button
             id="nav-articles"
             onClick={() => setActiveTab('articles')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center space-x-1.5 ${
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center space-x-1.5 ${
               activeTab === 'articles'
                 ? 'bg-[#1a1a1a] text-[#FFD700] border border-[#FFD700]/40 shadow-md'
                 : 'text-gray-400 hover:text-white hover:bg-[#141414]'
             }`}
           >
             <span>HousingBrief Wire</span>
-            <span className="px-1.5 py-0.2 text-[8px] bg-[#FFD700]/20 text-[#FFD700] border border-[#FFD700]/40 rounded font-mono font-bold">
-              TOP 5
-            </span>
           </button>
           <button
             id="nav-charts"
             onClick={() => setActiveTab('charts')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
               activeTab === 'charts'
                 ? 'bg-[#1a1a1a] text-[#FFD700] border border-[#FFD700]/40 shadow-md'
                 : 'text-gray-400 hover:text-white hover:bg-[#141414]'
             }`}
           >
-            MBS Tick Charts
+            Tick Charts
           </button>
           <button
             id="nav-qa"
             onClick={() => setActiveTab('qa')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer relative ${
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer relative ${
               activeTab === 'qa'
                 ? 'bg-[#1a1a1a] text-[#FFD700] border border-[#FFD700]/40 shadow-md'
                 : 'text-gray-400 hover:text-white hover:bg-[#141414]'
             }`}
           >
-            Interactive Q&A
-            <span className="ml-1.5 px-1.5 py-0.2 text-[9px] bg-[#FFD700]/20 text-[#FFD700] border border-[#FFD700]/40 rounded font-mono">
-              ON-AIR
-            </span>
+            Q&A Hub
           </button>
           <button
             id="nav-calculator"
             onClick={() => setActiveTab('calculator')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
               activeTab === 'calculator'
                 ? 'bg-[#1a1a1a] text-[#FFD700] border border-[#FFD700]/40 shadow-md'
                 : 'text-gray-400 hover:text-white hover:bg-[#141414]'
             }`}
           >
-            Lock vs Float
+            Lock Calc
           </button>
           <button
             id="nav-calendar"
             onClick={() => setActiveTab('calendar')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
               activeTab === 'calendar'
                 ? 'bg-[#1a1a1a] text-[#FFD700] border border-[#FFD700]/40 shadow-md'
                 : 'text-gray-400 hover:text-white hover:bg-[#141414]'
             }`}
           >
-            Economic Calendar
+            Calendar
           </button>
         </nav>
 

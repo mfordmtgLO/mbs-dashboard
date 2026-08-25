@@ -1,6 +1,6 @@
 {
   "name": "MBS-Live",
-  "description": "Real-time mortgage-backed securities live streaming platform featuring live market feeds, expert commentary, technical tick charts, and interactive Q&A for mortgage professionals.",
+  "description": "Institutional mortgage-backed securities live stream & desk platform featuring live feeds, Dan Gallagher CFA Lock Advice Database with 24h lookback accuracy tracking & adaptive AI risk strategy, custom MBS watchlists, and client loan closing CSV/Excel CRM import with live spread delta analysis.",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

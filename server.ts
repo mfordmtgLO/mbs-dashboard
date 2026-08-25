@@ -403,21 +403,33 @@ app.get('/api/markets/live-cnbc', async (req, res) => {
   }
 });
 
-// Endpoint: Real-time Mortgage Strategist Q&A with Google Search Grounding
+// Endpoint: Real-time Mortgage Strategist Q&A with Google Search Grounding & Adaptive Accuracy Feedback Loop
 app.post('/api/ask-strategist', async (req, res) => {
   try {
-    const { question, marketContext } = req.body;
+    const { question, marketContext, accuracyContext } = req.body;
     if (!question) {
       return res.status(400).json({ error: 'Question is required' });
     }
+
+    const accuracyPct = typeof accuracyContext?.accuracyPct === 'number' ? accuracyContext.accuracyPct : 78.4;
+    const isDefensiveMode = accuracyContext?.riskMode === 'DEFENSIVE_RISK_MITIGATION' || accuracyPct < 60.0;
 
     const ai = getGeminiClient();
     if (!ai) {
       const tenYrChg = parseFloat(marketContext?.tenYearChange || '-4.4');
       const isYieldDown = tenYrChg <= 0;
       return res.json({
-        answer: `[Live Market Strategist Desk] Based on current market conditions (${marketContext?.activeCoupon || 'UMBS 30yr 6.0%'} trading at ${marketContext?.price || '102-08'}, 10Y Treasury yield at ${marketContext?.tenYear || '4.660%'} with a ${marketContext?.tenYearChange || '-4.4 bps'} day shift), falling benchmark yields and advancing MBS coupon prices create positive lender margin expansion. This environment translates directly to lower primary mortgage interest rates and a favorable window for positive mid-day rate sheet reprices.`,
-        lockRecommendation: isYieldDown ? 'FLOAT STRATEGY (POSITIVE REPRICE WINDOW)' : 'PROTECTIVE LOCK',
+        answer: `[Live Market Strategist Desk — Dan Gallagher, CFA]
+Based on current secondary market conditions (${marketContext?.activeCoupon || 'UMBS 30yr 6.0%'} @ ${marketContext?.price || '101-04'}, 10Y Treasury yield at ${marketContext?.tenYear || '4.660%'} with a ${marketContext?.tenYearChange || '-4.4 bps'} day shift), falling benchmark yields and advancing MBS coupon prices create positive lender margin expansion.
+
+**Lock vs. Float Strategy Matrix:**
+• **0–15 Day Closings:** ${isDefensiveMode ? 'PROTECTIVE LOCK — Secure current rate sheet pricing with zero delay.' : (isYieldDown ? 'TACTICAL FLOAT — Capitalize on active positive reprice window.' : 'PROTECTIVE LOCK')}
+• **15–30 Day Closings:** ${isDefensiveMode ? 'LEAN LOCK — Defensive risk mode active.' : 'FLOAT with a strict 50-day SMA stop-loss.'}
+• **45+ Day Pipelines:** ${isYieldDown ? 'TACTICAL FLOAT — Allow room for technical trend down toward 4.60% support.' : 'SELECTIVE LOCK'}
+
+*Adaptive Accuracy Ledger Status:* Dan's 24-hour lookback accuracy is ${accuracyPct}% (${isDefensiveMode ? 'Defensive Risk Mitigation Active' : 'Optimal Conviction Active'}).`,
+        lockRecommendation: isDefensiveMode ? 'PROTECTIVE LOCK' : (isYieldDown ? 'FLOAT STRATEGY (POSITIVE REPRICE WINDOW)' : 'PROTECTIVE LOCK'),
+        headlineDirective: isDefensiveMode ? 'PROTECTIVE LOCK — Defensive risk mitigation active' : (isYieldDown ? 'TACTICAL FLOAT — Ride positive reprice momentum' : 'DEFENSIVE LOCK'),
         rationale: isYieldDown
           ? '10Y yield drop combined with higher MBS coupon prices supports improving borrower pricing.'
           : 'Yield surges increase negative reprice risk across wholesale rate sheets.',
@@ -432,16 +444,31 @@ app.post('/api/ask-strategist', async (req, res) => {
       });
     }
 
+    const adaptiveRiskDirective = isDefensiveMode
+      ? `*** ADAPTIVE RISK MITIGATION ENGINE ACTIVE ***
+Current 24-Hour Lookback Advice Accuracy is ${accuracyPct}% (BELOW the 60.0% target threshold).
+MANDATORY STRATEGY ADJUSTMENT FOR DAN GALLAGHER:
+- You MUST adopt an aggressively DEFENSIVE, capital-preserving posture.
+- Mandate IMMEDIATE LOCKS for all 0-30 day pipeline loans to protect originators against market whipsaws.
+- Eliminate loose or speculative float recommendations.
+- For 45+ day loans, require a strict +15 bps stop-loss buffer and warn originators that secondary volatility is elevated.`
+      : `*** OPTIMAL CONVICTION & ALPHA MODE ACTIVE ***
+Current 24-Hour Lookback Advice Accuracy is ${accuracyPct}% (EXCEEDING the 60.0% goal target).
+- Provide decisive, high-conviction Lock vs. Float guidance.
+- Identify tactical float windows when 10Y yield technical support holds and positive rate sheet reprices are probable.`;
+
     const systemPrompt = `You are Dan Gallagher, CFA, the Chief Market Strategist on MBS-Live, a premier real-time financial broadcast and data platform for mortgage loan officers, branch managers, and secondary marketing directors.
 You provide incisive, Wall-Street-grade market commentary on Mortgage-Backed Securities (UMBS 30yr, GNMA, 15yr pools), 10-Year Treasury yields, Federal Reserve monetary policy, inflation metrics (CPI/PCE), lender re-pricing alerts, and Lock vs. Float strategies.
 You have access to Google Search grounding to retrieve current, up-to-date market information, economic releases, and financial news.
+
+${adaptiveRiskDirective}
 
 Crucial Market Mechanism:
 - When 10-Year Treasury yields fall (e.g. down -4.4 bps) and MBS coupon prices rise (e.g. up +5/32nds / +15 bps), primary mortgage interest rates DROP / IMPROVE. Wholesale lenders experience widened secondary execution margins, leading to POSITIVE mid-day rate sheet reprices (better pricing, higher lender credits, lower note rates).
 - Conversely, when 10-Year yields spike higher and MBS prices fall, mortgage rates RISE / WORSEN, creating NEGATIVE reprice risk where lenders pull sheets and reissue worse pricing.
 
 Current Live Market Data Context:
-- Active Benchmark: ${marketContext?.activeCoupon || 'UMBS 30yr 6.0%'} at ${marketContext?.price || '102-08'} (${marketContext?.changeBps || '+15.4'} bps)
+- Active Benchmark: ${marketContext?.activeCoupon || 'UMBS 30yr 6.0%'} at ${marketContext?.price || '101-04'} (${marketContext?.changeBps || '+15.4'} bps)
 - 10-Year Treasury Yield: ${marketContext?.tenYear || '4.660%'} (${marketContext?.tenYearChange || '-4.4 bps'})
 - 30-Year Conforming Par Rate: ${marketContext?.parRate || '6.625%'}
 - Repricing Risk Index: ${marketContext?.repriceRisk || 'Positive Re-price Opportunity (Float Window Active)'}
@@ -481,12 +508,22 @@ Keep it concise, actionable, and formatted with clean markdown without unnecessa
       }
     });
 
+    const isUp = (marketContext?.changeBps || '').startsWith('+') || parseFloat(marketContext?.tenYearChange || '-1') < 0;
+    const lockRec = isDefensiveMode
+      ? 'PROTECTIVE LOCK'
+      : (isUp ? 'FLOAT / CAPITALIZE ON POSITIVE REPRICE' : 'PROTECTIVE LOCK');
+
     res.json({
       answer: response.text || 'No response generated.',
-      lockRecommendation: marketContext?.changeBps?.startsWith('+') ? 'SELECTIVE FLOAT / LOCK ON GAINS' : 'PROTECTIVE LOCK',
+      lockRecommendation: lockRec,
+      headlineDirective: isDefensiveMode
+        ? 'PROTECTIVE LOCK — Defensive risk mitigation mode active'
+        : (isUp ? 'TACTICAL FLOAT — Expanding secondary margins support improved rate sheets' : 'DEFENSIVE LOCK — Guard against yield spike'),
       groundingSources,
       searchQueries: webSearchQueries,
       timestamp: new Date().toISOString(),
+      accuracyPct,
+      riskStrategyMode: isDefensiveMode ? 'DEFENSIVE_RISK_MITIGATION' : 'OPTIMAL_CONVICTION',
     });
   } catch (error: any) {
     console.error('Gemini Strategist API Error:', error);
@@ -496,6 +533,7 @@ Keep it concise, actionable, and formatted with clean markdown without unnecessa
     });
   }
 });
+
 
 // Endpoint: Live Google Search-Grounded Market Intelligence
 app.post('/api/market/search-grounded-intelligence', async (req, res) => {
