@@ -34,14 +34,41 @@ export const MbsTickerBoard: React.FC<MbsTickerBoardProps> = ({
 }) => {
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('table');
   const [displayFormat, setDisplayFormat] = useState<'32nds' | 'decimal'>('32nds');
-  const [filterAgency, setFilterAgency] = useState<'ALL' | 'FNMA' | 'FHLMC' | 'GNMA' | 'BENCHMARK'>('ALL');
+  const [filterAgency, setFilterAgency] = useState<'ALL' | 'LO_KEY' | 'FNMA' | 'FHLMC' | 'GNMA' | 'BENCHMARK'>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
   // Calculate max volume for relative volume bars
   const maxVol = Math.max(...quotes.map((q) => q.volBillions || 1.0), 6.8);
 
+  const isLoKeyQuote = (q: MBSQuote) => {
+    return (
+      q.id === 'us-10y-treasury' ||
+      q.id === 'fnma55' ||
+      q.id === 'fnma60' ||
+      q.id === 'fnma65' ||
+      q.id === 'gnma55' ||
+      q.id === 'gnma60' ||
+      q.id === 'gnma65' ||
+      q.symbol.includes('5.5%') ||
+      q.symbol.includes('6.0%') ||
+      q.symbol.includes('6.5%') ||
+      q.symbol.includes('10Y')
+    );
+  };
+
   const filteredQuotes = quotes.filter((q) => {
-    // Agency Filter
+    // Agency / LO Key Filter
+    if (filterAgency === 'LO_KEY') {
+      const isKey =
+        q.id === 'us-10y-treasury' ||
+        q.id === 'fnma55' ||
+        q.id === 'fnma60' ||
+        q.id === 'fnma65' ||
+        q.id === 'gnma55' ||
+        q.id === 'gnma60' ||
+        q.id === 'gnma65';
+      if (!isKey) return false;
+    }
     if (filterAgency === 'FNMA' && q.agency !== 'FNMA') return false;
     if (filterAgency === 'FHLMC' && q.agency !== 'FHLMC') return false;
     if (filterAgency === 'GNMA' && q.agency !== 'GNMA') return false;
@@ -152,7 +179,19 @@ export const MbsTickerBoard: React.FC<MbsTickerBoardProps> = ({
       {/* Filter Tabs & Search Strip */}
       <div className="px-4 py-2 bg-[#0a0a0a] border-b border-[#222222] flex flex-wrap items-center justify-between gap-3">
         {/* Filter Pills */}
-        <div className="flex items-center space-x-1 overflow-x-auto text-xs">
+        <div className="flex items-center space-x-1.5 overflow-x-auto text-xs">
+          <button
+            id="filter-lo-key"
+            onClick={() => setFilterAgency('LO_KEY')}
+            className={`px-3 py-1 rounded-lg font-mono text-xs font-bold transition-all cursor-pointer flex items-center space-x-1 ${
+              filterAgency === 'LO_KEY'
+                ? 'bg-[#FFD700] text-black shadow-md'
+                : 'bg-[#1a180b] text-[#FFD700] border border-[#FFD700]/40 hover:bg-[#25220f]'
+            }`}
+          >
+            <span>⭐ LO Core (5.5, 6.0, 6.5 & 10Y)</span>
+          </button>
+
           {(['ALL', 'FNMA', 'FHLMC', 'GNMA', 'BENCHMARK'] as const).map((agency) => (
             <button
               key={agency}
@@ -236,6 +275,11 @@ export const MbsTickerBoard: React.FC<MbsTickerBoardProps> = ({
                       <div className="font-bold text-white flex items-center gap-1.5">
                         {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-[#FFD700]"></span>}
                         <span>{q.symbol}</span>
+                        {isLoKeyQuote(q) && (
+                          <span className="px-1.5 py-0.2 text-[9px] font-mono font-bold rounded bg-[#FFD700]/15 text-[#FFD700] border border-[#FFD700]/40">
+                            {q.id.includes('60') ? 'CORE PAR' : 'LO KEY'}
+                          </span>
+                        )}
                       </div>
                       <div className="text-[10px] text-gray-400">{q.name}</div>
                     </td>
@@ -360,9 +404,14 @@ export const MbsTickerBoard: React.FC<MbsTickerBoardProps> = ({
                 {/* Card Top: Symbol & Category */}
                 <div className="flex items-start justify-between">
                   <div>
-                    <span className="text-xs font-bold text-white font-mono tracking-tight flex items-center gap-1.5">
+                    <span className="text-xs font-bold text-white font-mono tracking-tight flex items-center gap-1.5 flex-wrap">
                       {q.symbol}
                       {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-[#FFD700]"></span>}
+                      {isLoKeyQuote(q) && (
+                        <span className="px-1.5 py-0.2 text-[8px] font-mono font-bold rounded bg-[#FFD700]/20 text-[#FFD700] border border-[#FFD700]/40">
+                          {q.id.includes('60') ? 'CORE PAR' : 'LO KEY'}
+                        </span>
+                      )}
                     </span>
                     <p className="text-[10px] text-gray-400 truncate max-w-[170px]">{q.name}</p>
                   </div>

@@ -58,10 +58,20 @@ export const MarketTape: React.FC<MarketTapeProps> = ({
     },
   ];
 
-  // Construct MBS production coupon items
-  const mbsItems: TapeItem[] = quotes
+  // Construct MBS production coupon items (prioritizing LO key 5.5, 6.0, 6.5)
+  const priorityIds = ['fnma55', 'fnma60', 'fnma65', 'gnma55', 'gnma60', 'gnma65'];
+  const sortedQuotes = [...quotes].sort((a, b) => {
+    const aIdx = priorityIds.indexOf(a.id);
+    const bIdx = priorityIds.indexOf(b.id);
+    if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx;
+    if (aIdx !== -1) return -1;
+    if (bIdx !== -1) return 1;
+    return 0;
+  });
+
+  const mbsItems: TapeItem[] = sortedQuotes
     .filter((q) => q.category === 'UMBS_30Y' || q.category === 'GNMA_30Y')
-    .slice(0, 8)
+    .slice(0, 10)
     .map((b) => ({
       id: b.id,
       name: b.symbol,

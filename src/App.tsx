@@ -15,6 +15,7 @@ import { AiStrategistModal } from './components/AiStrategistModal';
 import { VolatilityToastContainer } from './components/VolatilityToastContainer';
 import { VolatilityAlertsDrawer } from './components/VolatilityAlertsDrawer';
 import { VolatilityControlBar } from './components/VolatilityControlBar';
+import { LoBenchmarkDesk } from './components/LoBenchmarkDesk';
 import { playRedVolatilityChime, playGreenVolatilityChime } from './utils/audioAlerts';
 
 import {
@@ -342,7 +343,20 @@ export default function App() {
           // Agency MBS Pools: FNMA, FHLMC, GNMA
           const duration = quote.duration || 4.0;
           const histOas = quote.histOas || 20;
-          const openPrice = quote.couponRate <= 3.0 ? 87.0 : quote.couponRate <= 4.5 ? 96.0 : 99.0;
+          const openPrice =
+            quote.couponRate <= 3.0
+              ? 87.0
+              : quote.couponRate <= 4.0
+              ? 95.0
+              : quote.couponRate <= 4.5
+              ? 97.0
+              : quote.couponRate <= 5.0
+              ? 98.8
+              : quote.couponRate <= 5.5
+              ? 99.2
+              : quote.couponRate <= 6.0
+              ? 100.8
+              : 102.1;
 
           // Derive mathematical price
           const derivedPrice = deriveMbsPrice(quote.couponRate, duration, new10Y, histOas);
@@ -552,6 +566,15 @@ export default function App() {
           alertCount={volatilityAlertsHistory.length}
           soundEnabled={soundEnabled}
           onToggleSound={() => setSoundEnabled(!soundEnabled)}
+        />
+
+        {/* Loan Officer Core Benchmark & Production Desk: 10Y UST + 5.5, 6.0, 6.5 FNMA & GNMA */}
+        <LoBenchmarkDesk
+          quotes={quotes}
+          treasuryCurve={treasuryCurve}
+          selectedQuoteId={selectedQuoteId}
+          onSelectQuote={setSelectedQuoteId}
+          onNavigateToTab={setActiveTab}
         />
 
         {/* Tab 1: Live Studio & Feed (Default Broadcast Mode) */}
